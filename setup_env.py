@@ -98,6 +98,8 @@ def main() -> None:
         print("Installing project in editable mode...")
         _run([sys.executable, "-m", "pip", "install", "-e", str(repo_root), *pip_args])
 
+    _run([sys.executable, "setup.py", "install"])
+
     print("Environment ready.")
 
 
