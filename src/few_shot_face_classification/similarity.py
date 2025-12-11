@@ -167,11 +167,24 @@ def _draw_faces_on_image(
     # Try to load a font that supports Chinese characters
     font_size = 20
     try:
-        # Try common Chinese font paths on Windows
+        # Try common Chinese font paths on different platforms
         font_paths = [
+            # Linux fonts (common locations)
+            "/usr/share/fonts/truetype/NotoSansCJKsc-VF.otf",
+            "/usr/share/fonts/truetype/SourceHanSansCN-Normal.otf",
+            "/usr/share/fonts/truetype/SourceHanSansCN-Regular.otf",
+            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            # Windows fonts
             "C:\\Windows\\Fonts\\simhei.ttf",  # SimHei (黑体)
             "C:\\Windows\\Fonts\\simsun.ttc",  # SimSun (宋体)
             "C:\\Windows\\Fonts\\msyh.ttc",    # Microsoft YaHei (微软雅黑)
+            # macOS fonts
+            "/System/Library/Fonts/PingFang.ttc",
+            "/Library/Fonts/Arial Unicode.ttf",
         ]
         font = None
         for font_path in font_paths:
