@@ -31,6 +31,13 @@ def _load_or_create_embeddings(
     if not use_cache or cache_file is None:
         return embed_folder(labeled_f, batch_size=batch_size)
 
+    def _restore_paths(raw_paths):
+        # Rebuild paths relative to labeled folder for cross-platform portability
+        restored = []
+        for p in raw_paths:
+            restored.append(labeled_f / Path(p))
+        return restored
+
     cache_valid = False
     if cache_file.exists():
         cache_mtime = cache_file.stat().st_mtime
@@ -43,7 +50,7 @@ def _load_or_create_embeddings(
         try:
             with open(cache_file, "rb") as f:
                 data = pickle.load(f)
-            labeled_paths = data["paths"]
+            labeled_paths = _restore_paths(data["paths"])
             labeled_embs = data["embeddings"]
             return labeled_paths, labeled_embs
         except Exception:
@@ -54,8 +61,9 @@ def _load_or_create_embeddings(
 
     try:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
+        rel_paths = [p.relative_to(labeled_f).as_posix() for p in labeled_paths]
         with open(cache_file, "wb") as f:
-            pickle.dump({"paths": labeled_paths, "embeddings": labeled_embs}, f)
+            pickle.dump({"paths": rel_paths, "embeddings": labeled_embs}, f)
     except Exception:
         # Cache write failure should not block main flow
         pass

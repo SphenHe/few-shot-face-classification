@@ -25,6 +25,15 @@ def parse_args() -> argparse.Namespace:
 
 def load_or_create_embeddings(labeled_folder: Path, cache_file: Path, batch_size: int, use_cache: bool = True):
     """Load embeddings from cache or create new ones."""
+    def _restore_paths(raw_paths):
+        # Rebuild paths relative to current labeled folder to stay cross-platform
+        restored = []
+        for p in raw_paths:
+            # Accept stored as str or Path-like; treat as relative path
+            rel = Path(p)
+            restored.append(labeled_folder / rel)
+        return restored
+
     # Check if cache exists and is newer than labeled folder
     cache_valid = False
     if use_cache and cache_file.exists():
@@ -40,7 +49,7 @@ def load_or_create_embeddings(labeled_folder: Path, cache_file: Path, batch_size
         try:
             with open(cache_file, "rb") as f:
                 data = pickle.load(f)
-            labeled_paths = data["paths"]
+            labeled_paths = _restore_paths(data["paths"])
             labeled_embs = data["embeddings"]
             print(f"Loaded {len(labeled_embs)} cached embeddings")
             return labeled_paths, labeled_embs
@@ -55,8 +64,9 @@ def load_or_create_embeddings(labeled_folder: Path, cache_file: Path, batch_size
     # Save to cache
     try:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
+        rel_paths = [p.relative_to(labeled_folder).as_posix() for p in labeled_paths]
         with open(cache_file, "wb") as f:
-            pickle.dump({"paths": labeled_paths, "embeddings": labeled_embs}, f)
+            pickle.dump({"paths": rel_paths, "embeddings": labeled_embs}, f)
         print(f"Saved embeddings to cache: {cache_file}")
     except Exception as e:
         print(f"Warning: Failed to save cache: {e}")
