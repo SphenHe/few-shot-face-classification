@@ -1,0 +1,7 @@
+facenet-pytorch~=2.5.2
+Pillow
+matplotlib
+scikit-learn
+tqdm
+numpy
+opencv-python
