@@ -1,4 +1,5 @@
 import argparse
+import pickle
 from pathlib import Path
 
 import cv2
@@ -17,16 +18,63 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=0, help="Optional camera width")
     parser.add_argument("--height", type=int, default=0, help="Optional camera height")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for loading labeled embeddings")
+    parser.add_argument("--cache", type=Path, default=Path("data/embeddings_cache.pkl"), help="Cache file for embeddings")
+    parser.add_argument("--no-cache", action="store_true", help="Force re-processing without using cache")
     return parser.parse_args()
+
+
+def load_or_create_embeddings(labeled_folder: Path, cache_file: Path, batch_size: int, use_cache: bool = True):
+    """Load embeddings from cache or create new ones."""
+    # Check if cache exists and is newer than labeled folder
+    cache_valid = False
+    if use_cache and cache_file.exists():
+        cache_mtime = cache_file.stat().st_mtime
+        # Check if any file in labeled folder is newer than cache
+        labeled_files = list(labeled_folder.glob("*"))
+        if labeled_files:
+            newest_labeled = max(f.stat().st_mtime for f in labeled_files if f.is_file())
+            cache_valid = cache_mtime > newest_labeled
+        
+    if cache_valid:
+        print(f"Loading embeddings from cache: {cache_file}")
+        try:
+            with open(cache_file, "rb") as f:
+                data = pickle.load(f)
+            labeled_paths = data["paths"]
+            labeled_embs = data["embeddings"]
+            print(f"Loaded {len(labeled_embs)} cached embeddings")
+            return labeled_paths, labeled_embs
+        except Exception as e:
+            print(f"Failed to load cache: {e}")
+            print("Re-processing labeled images...")
+    
+    # Process labeled images
+    print("Processing labeled images...")
+    labeled_paths, labeled_embs = embed_folder(labeled_folder, batch_size=batch_size)
+    
+    # Save to cache
+    try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache_file, "wb") as f:
+            pickle.dump({"paths": labeled_paths, "embeddings": labeled_embs}, f)
+        print(f"Saved embeddings to cache: {cache_file}")
+    except Exception as e:
+        print(f"Warning: Failed to save cache: {e}")
+    
+    return labeled_paths, labeled_embs
 
 
 def main() -> None:
     args = parse_args()
 
-    # Preload labeled embeddings once
-    print("Loading labeled embeddings...")
-    labeled_paths, labeled_embs = embed_folder(args.labeled, batch_size=args.batch_size)
-    print(f"Loaded {len(labeled_embs)} labeled faces from {args.labeled}")
+    # Load or create labeled embeddings with caching
+    labeled_paths, labeled_embs = load_or_create_embeddings(
+        args.labeled, 
+        args.cache, 
+        args.batch_size, 
+        use_cache=not args.no_cache
+    )
+    print(f"Ready with {len(labeled_embs)} labeled faces from {args.labeled}")
 
     # Load networks (auto-select GPU if available)
     mtcnn, vggface2 = get_networks()

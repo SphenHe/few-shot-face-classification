@@ -15,6 +15,7 @@ def main():
     DATA_RAW = Path("data/raw")          # 原始图片文件夹
     DATA_LABELED = Path("data/labeled")  # 标注人脸文件夹
     DATA_RESULTS = Path("data/results")  # 结果输出文件夹
+    CACHE_FILE = Path("data/embeddings_cache.pkl")  # 嵌入缓存
     
     # 创建结果文件夹
     DATA_RESULTS.mkdir(exist_ok=True, parents=True)
@@ -51,6 +52,8 @@ def main():
             labeled_f=DATA_LABELED,
             write_f=DATA_RESULTS,
             draw_boxes=True,  # 在输出照片上绘制人脸框框和名字
+            cache_file=CACHE_FILE,
+            use_cache=True,
         )
         
         print("\n" + "="*60)
