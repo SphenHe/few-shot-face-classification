@@ -76,6 +76,7 @@ def detect_and_export(
         batch_size: int = 32,
         thr: float = 1.,
         conflict: Conflict = Conflict.CRASH,
+        draw_boxes: bool = True,
 ) -> None:
     """
     Detect all faces in the images and export them to the correct subfolder.
@@ -86,9 +87,31 @@ def detect_and_export(
     :param batch_size: Batch size used during the export
     :param thr: Distance threshold
     :param conflict: How to handle conflict in the data (warn, remove, or crash execution)
+    :param draw_boxes: Whether to draw face boxes and names on output images
     """
-    # First, validate that all labels are indeed correct
-    validate_labels(labeled_f, conflict=conflict)
+    # First, validate that all labels are indeed correct. On crash, move bad images aside and retry.
+    if conflict == Conflict.CRASH:
+        error_dir = labeled_f.parent / "error_data"
+        error_dir.mkdir(exist_ok=True, parents=True)
+
+        while True:
+            try:
+                validate_labels(labeled_f, conflict=conflict)
+                break
+            except InvalidImageException as exc:
+                bad_path = getattr(exc, "path", None)
+                if bad_path is None:
+                    raise
+
+                bad_path = Path(bad_path)
+                dest = error_dir / bad_path.name
+                while dest.exists():
+                    dest = dest.with_name(f"{dest.stem}_{getrandbits(16)}{dest.suffix}")
+
+                print(f"Invalid image '{bad_path}', moving to '{dest}' and retrying validation...")
+                move(str(bad_path), dest)
+    else:
+        validate_labels(labeled_f, conflict=conflict)
     
     # Embed the data
     labeled_paths, labeled_embs = embed_folder(labeled_f)
@@ -104,7 +127,8 @@ def detect_and_export(
             labeled_paths,
             labeled_embs,
             write_f,
-            thr
+            thr,
+            draw_boxes,
         ))
     
     # Embed and export each chunk
@@ -117,7 +141,7 @@ def _embed_and_export(
 ) -> None:
     """Embed the given paths and export the results."""
     # Unfold the arguments
-    paths, labeled_paths, labeled_embs, write_f, thr = args
+    paths, labeled_paths, labeled_embs, write_f, thr, draw_boxes = args
     
     # Create the embeddings
     paths, embs = embed_batch(paths)
@@ -130,6 +154,7 @@ def _embed_and_export(
             labeled_embs=labeled_embs,
             write_f=write_f,
             thr=thr,
+            draw_boxes=draw_boxes,
     )
 
 

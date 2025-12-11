@@ -27,6 +27,8 @@ class InvalidImageException(Exception):
     """Image is invalid."""
     
     def __init__(self, path: Optional[Union[str, Path]] = None):
+        # Persist the offending path so callers can respond programmatically
+        self.path = Path(path) if path is not None else None
         msg = "Invalid image!"
         if path is not None:
             msg += f" ({path})"
