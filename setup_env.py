@@ -13,6 +13,7 @@ BASE_REQUIREMENTS = [
     ("sklearn", "scikit-learn>=1.0"),
     ("tqdm", "tqdm>=4.60"),
     ("numpy", "numpy>=1.21"),
+    ("cv2", "opencv-python>=4.5"),
 ]
 
 TORCH_IMPORTS = ("torch", "torchvision")
