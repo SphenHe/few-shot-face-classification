@@ -5,6 +5,7 @@
 
 from pathlib import Path
 from few_shot_face_classification import detect_and_export
+from few_shot_face_classification.utils import Conflict
 
 def main():
     print("="*60)
@@ -52,6 +53,7 @@ def main():
             labeled_f=DATA_LABELED,
             write_f=DATA_RESULTS,
             draw_boxes=True,  # 在输出照片上绘制人脸框框和名字
+            conflict=Conflict.REMOVE, # 遇到错误时移除问题图片
             cache_file=CACHE_FILE,
             use_cache=True,
         )
