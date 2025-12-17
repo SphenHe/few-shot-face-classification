@@ -14,7 +14,7 @@ Good luck and have fun!
 ## If you have some problems
 
 - `python setup_env.py` can be used to set up the environment from scratch.
-- `python clean.py` can be used to clean up the environment.
+- `python clean.py --all` can be used to clean up the environment.
 - `python test-cv.py` can be used to test if OpenCV and camera is installed correctly.
 
 ## Changes
