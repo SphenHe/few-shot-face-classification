@@ -22,7 +22,19 @@ def clean_cache():
         Path.home() / ".cache" / "torch",  # PyTorch 模型缓存
         Path.home() / ".facenet_pytorch_data",  # facenet-pytorch 缓存
     ]
-    
+
+    # 删除本地嵌入缓存
+    embeddings_cache = Path("data/embeddings_cache.pkl")
+    if embeddings_cache.exists():
+        print(f"删除嵌入缓存: {embeddings_cache}")
+        try:
+            embeddings_cache.unlink()
+            print("✅ 已删除")
+        except Exception as e:
+            print(f"⚠️  删除失败: {e}")
+    else:
+        print(f"✓ 嵌入缓存不存在: {embeddings_cache}")
+
     for cache_dir in cache_folders:
         if cache_dir.exists():
             print(f"删除缓存: {cache_dir}")
