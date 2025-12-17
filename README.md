@@ -6,16 +6,16 @@ Most of the time, since you have completed the environment setup during the clas
 
 1. Activate the virtual environment by using the command: `.\venv\Scripts\Activate.ps1` (for Windows PowerShell) or `source venv/bin/activate` (for macOS/Linux) or select the virtual environment in your IDE.
 2. Replace the images in the data folder with your own images. In the data folder ,you should create two subfolders: `labeled` and `raw`. Put the labeled images in the `labeled` folder and the raw images in the `raw` folder. Make sure to follow the name pattern mentioned in the class: Use `NAME_1.jpg`, `NAME_2.jpg`, etc. for images of persons of interest.
-3. Run the code by using the command: `python run_classification.py` or, press the run button in your IDE.
-4. You can also try using `python video_realtime.py` to test the real-time face classification with your camera.
+3. Run the code by using the command: `python3 run_classification.py` or, press the run button in your IDE.
+4. You can also try using `python3 video_realtime.py` to test the real-time face classification with your camera.
 
 Good luck and have fun!
 
 ## If you have some problems
 
-- `python setup_env.py` can be used to set up the environment from scratch.
-- `python clean.py --all` can be used to clean up the environment.
-- `python test-cv.py` can be used to test if OpenCV and camera is installed correctly.
+- `python3 setup_env.py` can be used to set up the environment from scratch.
+- `python3 clean.py --all` can be used to clean up the environment.
+- `python3 test-cv.py` can be used to test if OpenCV and camera is installed correctly.
 
 ## Changes
 
