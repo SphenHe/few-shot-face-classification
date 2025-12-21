@@ -1,6 +1,6 @@
 # Few-Shot Face Classification
 
-Homework 8 for Principles of Engineering System Representation（30030653-0）
+Homework 8 for Principles of Engineering System Representation (30030653-0)
 
 Most of the time, since you have completed the environment setup during the class, you only need to:
 
