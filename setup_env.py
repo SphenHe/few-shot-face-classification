@@ -7,13 +7,13 @@ import sys
 from pathlib import Path
 
 BASE_REQUIREMENTS = [
-    ("facenet_pytorch", "facenet-pytorch>=2.5.2"),
-    ("PIL", "Pillow>=9.0"),
-    ("matplotlib", "matplotlib>=3.5"),
-    ("sklearn", "scikit-learn>=1.0"),
-    ("tqdm", "tqdm>=4.60"),
-    ("numpy", "numpy>=1.21"),
-    ("cv2", "opencv-python>=4.5"),
+    ("facenet_pytorch", "facenet-pytorch~=2.5.2"),
+    ("PIL", "Pillow"),
+    ("matplotlib", "matplotlib"),
+    ("sklearn", "scikit-learn"),
+    ("tqdm", "tqdm"),
+    ("numpy", "numpy"),
+    ("cv2", "opencv-python"),
 ]
 
 TORCH_IMPORTS = ("torch", "torchvision")
