@@ -1,7 +1,7 @@
 """Check similarities between embeddings and operate accordingly."""
 from pathlib import Path
 from shutil import copy
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 from PIL import Image
@@ -24,6 +24,9 @@ def get_classes(
     :param labeled_embs: Embeddings of the labeled faces
     :param thr: Distance threshold, return None if no distance falls below it
     """
+    if not embs:
+        return []
+
     # Get all classes that belong to the labeled embeddings
     labeled_classes = [get_class(p) for p in labeled_paths]
     
@@ -50,6 +53,7 @@ def export(
         thr: float = 1.,
         draw_boxes: bool = True,
         device: str = "cpu",
+        boxes: Optional[List[np.ndarray]] = None,
 ) -> None:
     """
     Export (copy) all images to their corresponding class (recognised person).
@@ -63,6 +67,7 @@ def export(
     :param thr: Distance threshold
     :param draw_boxes: Whether to draw face boxes and names on the output images
     :param device: Torch device for embedding ("cpu", "cuda", or "auto")
+    :param boxes: Bounding boxes aligned with paths and embeddings
     """
     # Derive all the labeled classes
     classes = get_classes(
@@ -72,61 +77,57 @@ def export(
             thr=thr,
     )
     
-    # Import MTCNN for face detection if drawing boxes
-    if draw_boxes:
-        from few_shot_face_classification.embed import get_networks, embed
-        mtcnn, vggface2 = get_networks(device=device)
-    
-    # Assign images to correct class
-    for cls, path in zip(classes, paths):
-        # Ignore when no class is recognised
-        if cls is None:
+    images: Dict[Path, Dict[str, list]] = {}
+    for index, (cls, path) in enumerate(zip(classes, paths)):
+        item = images.setdefault(path, {"classes": [], "boxes": []})
+        item["classes"].append(cls)
+        if boxes is not None and index < len(boxes):
+            item["boxes"].append(boxes[index])
+
+    mtcnn = None
+    if draw_boxes and boxes is None:
+        # Backward-compatible fallback for direct callers that do not provide boxes.
+        from facenet_pytorch import MTCNN
+        from few_shot_face_classification.embed import resolve_device
+        mtcnn = MTCNN(keep_all=True, device=resolve_device(device))
+
+    for path, item in images.items():
+        recognised_classes = list(dict.fromkeys(cls for cls in item["classes"] if cls is not None))
+        if not recognised_classes:
             continue
-        
-        # Ensure class-folder exists
-        (write_f / cls).mkdir(parents=True, exist_ok=True)
-        output_path = write_f / f"{cls}/{path.name}"
-        
-        # If drawing boxes is enabled, process the image
-        if draw_boxes:
-            try:
-                # Load image using PIL for consistency with the rest of the code
-                im = Image.open(path)
-                
-                # Detect faces and get their embeddings
-                batch_boxes, _ = mtcnn.detect(im)
-                
-                # Only process if faces were detected
-                if batch_boxes is not None and len(batch_boxes) > 0:
-                    # Get embeddings for all detected faces
-                    face_embs = embed(im, mtcnn=mtcnn, vggface2=vggface2, device=device)
-                    
-                    # Identify each face separately
-                    face_names = get_classes(
-                        embs=face_embs,
-                        labeled_paths=labeled_paths,
-                        labeled_embs=labeled_embs,
-                        thr=thr,
-                    )
-                    
-                    # Replace None with "Unknown"
-                    face_names = [name if name else "Unknown" for name in face_names]
-                    
-                    # Draw boxes on the image
-                    img_with_boxes = _draw_faces_on_image(im, batch_boxes, face_names)
-                    
-                    # Save the image with boxes
-                    img_with_boxes.save(output_path)
-                else:
-                    # No faces detected, just copy
-                    copy(path, output_path)
-            except Exception as e:
-                # If any error occurs during processing, just copy the original
-                print(f"Warning: Could not draw boxes on {path}: {e}")
+
+        output_paths = []
+        for cls in recognised_classes:
+            (write_f / cls).mkdir(parents=True, exist_ok=True)
+            output_paths.append(write_f / cls / path.name)
+
+        if not draw_boxes:
+            for output_path in output_paths:
                 copy(path, output_path)
-        else:
-            # Original behavior: just copy
-            copy(path, output_path)
+            continue
+
+        try:
+            with Image.open(path) as im:
+                face_boxes = item["boxes"]
+                if not face_boxes and mtcnn is not None:
+                    detected_boxes, _ = mtcnn.detect(im)
+                    face_boxes = [] if detected_boxes is None else list(detected_boxes)
+
+                if not face_boxes:
+                    for output_path in output_paths:
+                        copy(path, output_path)
+                    continue
+
+                face_names = [name if name else "Unknown" for name in item["classes"]]
+                if len(face_names) < len(face_boxes):
+                    face_names.extend(["Unknown"] * (len(face_boxes) - len(face_names)))
+                image_with_boxes = _draw_faces_on_image(im, np.asarray(face_boxes), face_names)
+                for output_path in output_paths:
+                    image_with_boxes.save(output_path)
+        except Exception as exc:
+            print(f"Warning: Could not draw boxes on {path}: {exc}")
+            for output_path in output_paths:
+                copy(path, output_path)
 
 def _draw_faces_on_image(
         image,

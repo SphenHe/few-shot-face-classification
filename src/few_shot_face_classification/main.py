@@ -11,10 +11,13 @@ from tqdm import tqdm
 from few_shot_face_classification.cache import load_or_build_embeddings_cache
 from few_shot_face_classification.data import get_im_paths, load_single
 from few_shot_face_classification.embed import (
+    _configure_cpu_worker_threads,
     _embed_batch_worker,
+    _embed_batch_with_boxes_worker,
     _init_embed_worker,
     embed,
     embed_batch,
+    embed_batch_with_boxes,
     get_networks,
     resolve_device,
     resolve_num_workers,
@@ -170,9 +173,13 @@ def detect_and_export(
     chunks: List[Any] = []
     for i in range(0, len(paths), batch_size):
         chunks.append(paths[i:i + batch_size])
+
+    if not chunks:
+        return
     
     # Embed and export each chunk
     if resolved_device.type == "cuda":
+        mtcnn, vggface2 = get_networks(device=device)
         args = (
             labeled_paths,
             labeled_embs,
@@ -180,12 +187,16 @@ def detect_and_export(
             thr,
             draw_boxes,
             device,
+            mtcnn,
+            vggface2,
         )
         list(tqdm((_embed_and_export(chunk, *args) for chunk in chunks), total=len(chunks), desc="Exporting"))
         return
 
     workers = min(resolve_num_workers(num_workers), len(chunks)) if chunks else 1
     if workers == 1:
+        _configure_cpu_worker_threads()
+        mtcnn, vggface2 = get_networks(device=device)
         args = (
             labeled_paths,
             labeled_embs,
@@ -193,6 +204,8 @@ def detect_and_export(
             thr,
             draw_boxes,
             device,
+            mtcnn,
+            vggface2,
         )
         list(tqdm((_embed_and_export(chunk, *args) for chunk in chunks), total=len(chunks), desc="Exporting"))
     else:
@@ -236,10 +249,25 @@ def _embed_and_export(
         thr: float,
         draw_boxes: bool,
         device: str,
+        mtcnn: Any = None,
+        vggface2: Any = None,
 ) -> None:
     """Embed the given paths and export the results."""
-    # Create the embeddings
-    paths, embs = embed_batch(paths, device=device)
+    boxes = None
+    if draw_boxes:
+        paths, embs, boxes = embed_batch_with_boxes(
+            paths,
+            device=device,
+            mtcnn=mtcnn,
+            vggface2=vggface2,
+        )
+    else:
+        paths, embs = embed_batch(
+            paths,
+            device=device,
+            mtcnn=mtcnn,
+            vggface2=vggface2,
+        )
     
     # Export the results
     export(
@@ -251,6 +279,7 @@ def _embed_and_export(
             thr=thr,
             draw_boxes=draw_boxes,
             device=device,
+            boxes=boxes,
     )
 
 
@@ -258,7 +287,11 @@ def _embed_and_export_worker(paths: List[Path]) -> None:
     if _EXPORT_LABELED_PATHS is None or _EXPORT_LABELED_EMBS is None or _EXPORT_WRITE_F is None:
         raise RuntimeError("Export worker was not initialized")
 
-    embedded_paths, embs = _embed_batch_worker(paths)
+    boxes = None
+    if _EXPORT_DRAW_BOXES:
+        embedded_paths, embs, boxes = _embed_batch_with_boxes_worker(paths)
+    else:
+        embedded_paths, embs = _embed_batch_worker(paths)
     export(
             paths=embedded_paths,
             embs=embs,
@@ -268,6 +301,7 @@ def _embed_and_export_worker(paths: List[Path]) -> None:
             thr=_EXPORT_THR,
             draw_boxes=_EXPORT_DRAW_BOXES,
             device=_EXPORT_DEVICE,
+            boxes=boxes,
     )
 
 

@@ -21,7 +21,7 @@ def main():
     DATA_RESULTS = DATA_ROOT / "results"  # 结果输出文件夹
     CACHE_FILE = DATA_ROOT / "embeddings_cache.pkl"  # 嵌入缓存
     DEVICE = "cpu"  # 可改为 "cuda" 使用 GPU；或改为 "auto" 自动选择
-    NUM_WORKERS = int(os.getenv("FSFC_NUM_WORKERS", "4"))  # CPU 进程数，服务器多核时不要开太大
+    NUM_WORKERS = int(os.environ["FSFC_NUM_WORKERS"]) if "FSFC_NUM_WORKERS" in os.environ else None
     DRAW_BOXES = os.getenv("FSFC_DRAW_BOXES", "1") != "0"  # 设为 0 可跳过画框以提速
     
     # 显示数据统计
