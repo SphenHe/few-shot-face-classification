@@ -87,7 +87,7 @@ python run_classification.py
 摄像头测试：
 
 ```bash
-python test-cv.py
+python test_cv.py
 ```
 
 实时识别：
