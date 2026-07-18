@@ -1,107 +1,142 @@
 #!/usr/bin/env python3
-"""Environment bootstrapper for few-shot face classification."""
+"""Create a Conda or venv environment and install this project."""
 import argparse
-import importlib
+import os
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
-
-BASE_REQUIREMENTS = [
-    ("facenet_pytorch", "facenet-pytorch~=2.5.2"),
-    ("PIL", "Pillow"),
-    ("matplotlib", "matplotlib"),
-    ("sklearn", "scikit-learn"),
-    ("tqdm", "tqdm"),
-    ("numpy", "numpy"),
-    ("cv2", "opencv-python"),
-]
-
-TORCH_IMPORTS = ("torch", "torchvision")
+from typing import Optional, Union
 
 
 def _run(cmd):
-    print(">>", " ".join(cmd))
+    print(">>", shlex.join(cmd))
     subprocess.check_call(cmd)
 
 
-def _is_installed(mod_name: str) -> bool:
-    try:
-        importlib.import_module(mod_name)
-        return True
-    except ImportError:
-        return False
+def _is_conda_env(conda: str, env_name: str) -> bool:
+    result = subprocess.run(
+        [conda, "env", "list"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return any(line.split() and line.split()[0] == env_name for line in result.stdout.splitlines())
 
 
-def _ensure_package(mod_name: str, spec: str, pip_args: list[str]) -> None:
-    try:
-        mod = importlib.import_module(mod_name)
-        ver = getattr(mod, "__version__", "unknown")
-        print(f"OK {mod_name} {ver}")
-        return
-    except ImportError:
-        print(f"Installing {spec}...")
-    _run([sys.executable, "-m", "pip", "install", spec, *pip_args])
+def _install_with_python(
+    python: Union[Path, str],
+    repo_root: Path,
+    upgrade: bool,
+    extra_index_url: Optional[str],
+) -> None:
+    install_cmd = [str(python), "-m", "pip", "install"]
+    if upgrade:
+        install_cmd.append("--upgrade")
+    if extra_index_url:
+        install_cmd += ["--extra-index-url", extra_index_url]
+
+    _run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
+    _run([*install_cmd, "-e", str(repo_root)])
 
 
-def _ensure_torch(torch_spec: str, index_url: str | None) -> None:
-    missing = [m for m in TORCH_IMPORTS if not _is_installed(m)]
-    if not missing:
-        versions = []
-        for m in TORCH_IMPORTS:
-            ver = getattr(importlib.import_module(m), "__version__", "unknown")
-            versions.append(f"{m} {ver}")
-        print("OK torch stack", " | ".join(versions))
-        return
+def _setup_conda(
+    env_name: str,
+    repo_root: Path,
+    upgrade: bool,
+    extra_index_url: Optional[str],
+) -> None:
+    conda = shutil.which("conda")
+    if conda is None:
+        sys.exit("conda was not found. Install Conda or run: python3 setup_env.py --env-manager venv")
 
-    cmd = [sys.executable, "-m", "pip", "install", *torch_spec.split()]
-    if index_url:
-        cmd += ["--index-url", index_url]
-    print("Installing torch stack...")
-    _run(cmd)
+    env_file = repo_root / "environment.yml"
+    if not _is_conda_env(conda, env_name):
+        _run([conda, "env", "create", "-n", env_name, "-f", str(env_file)])
+    else:
+        _run([conda, "env", "update", "-n", env_name, "-f", str(env_file), "--prune"])
+
+    pip_cmd = [conda, "run", "-n", env_name, "python", "-m", "pip"]
+    _run([*pip_cmd, "install", "--upgrade", "pip"])
+
+    install_cmd = [*pip_cmd, "install", "-e", str(repo_root)]
+    if upgrade:
+        install_cmd.append("--upgrade")
+    if extra_index_url:
+        install_cmd += ["--extra-index-url", extra_index_url]
+    _run(install_cmd)
+
+
+def _venv_python(venv_dir: Path) -> Path:
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
+def _activation_hint(venv_dir: Path) -> str:
+    if os.name == "nt":
+        return f"{venv_dir}\\Scripts\\Activate.ps1"
+    return f"source {venv_dir}/bin/activate"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Install runtime dependencies and the local package.")
+    parser = argparse.ArgumentParser(description="Set up a ready-to-use local Python environment.")
     parser.add_argument(
-        "--torch-spec",
-        default="torch torchvision",
-        help="Pip spec used when installing torch (space separated).",
+        "--env-manager",
+        choices=["auto", "conda", "venv", "current"],
+        default="auto",
+        help="Environment manager to use. auto prefers conda and falls back to venv.",
     )
     parser.add_argument(
-        "--torch-index-url",
+        "--conda-env",
+        default="few-shot-face-classification",
+        help="Conda environment name.",
+    )
+    parser.add_argument(
+        "--venv",
+        type=Path,
+        default=Path(".venv"),
+        help="Virtual environment directory.",
+    )
+    parser.add_argument(
+        "--extra-index-url",
         default=None,
-        help="Optional index URL for torch wheels (e.g. https://download.pytorch.org/whl/cu130).",
+        help="Optional extra package index, useful for custom PyTorch wheels.",
     )
     parser.add_argument(
         "--upgrade",
         action="store_true",
-        help="Pass --upgrade to pip installs.",
-    )
-    parser.add_argument(
-        "--no-editable",
-        action="store_true",
-        help="Skip installing this repo in editable mode.",
+        help="Upgrade dependencies while installing.",
     )
     args = parser.parse_args()
 
-    if sys.version_info < (3, 8):
-        sys.exit("Python 3.8+ is required.")
-    print(f"Python {sys.version.split()[0]}")
+    repo_root = Path(__file__).resolve().parent
+    env_manager = args.env_manager
 
-    pip_args = ["--upgrade"] if args.upgrade else []
+    if env_manager == "auto":
+        env_manager = "conda" if shutil.which("conda") else "venv"
 
-    _ensure_torch(args.torch_spec, args.torch_index_url)
-    for mod_name, spec in BASE_REQUIREMENTS:
-        _ensure_package(mod_name, spec, pip_args)
+    if env_manager == "conda":
+        _setup_conda(args.conda_env, repo_root, args.upgrade, args.extra_index_url)
+        print("Environment ready.")
+        print(f"Activate it with: conda activate {args.conda_env}")
+        return
 
-    if not args.no_editable:
-        repo_root = Path(__file__).resolve().parent
-        print("Installing project in editable mode...")
-        _run([sys.executable, "-m", "pip", "install", "-e", str(repo_root), *pip_args])
+    if sys.version_info < (3, 8) or sys.version_info >= (3, 13):
+        sys.exit("Python 3.8 to 3.12 is required for venv/current installs.")
 
-    _run([sys.executable, "setup.py", "install"])
+    python = Path(sys.executable)
+    if env_manager == "venv":
+        if not args.venv.exists():
+            _run([str(python), "-m", "venv", str(args.venv)])
+        python = _venv_python(args.venv)
+
+    _install_with_python(python, repo_root, args.upgrade, args.extra_index_url)
 
     print("Environment ready.")
+    if env_manager == "venv":
+        print(f"Activate it with: {_activation_hint(args.venv)}")
 
 
 if __name__ == "__main__":

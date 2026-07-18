@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from src.few_shot_face_classification.embed import embed, embed_folder, get_networks
-from src.few_shot_face_classification.similarity import get_classes, _draw_faces_on_image
+from few_shot_face_classification.embed import embed, embed_folder, get_networks
+from few_shot_face_classification.similarity import _draw_faces_on_image, get_classes
 
 
 def parse_args() -> argparse.Namespace:

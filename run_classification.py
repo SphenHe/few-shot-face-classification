@@ -7,27 +7,33 @@ from pathlib import Path
 from few_shot_face_classification import detect_and_export
 from few_shot_face_classification.utils import Conflict
 
+
 def main():
     print("="*60)
     print("开始人脸识别和分类任务")
     print("="*60)
     
     # 定义数据路径
-    DATA_RAW = Path("data/raw")          # 原始图片文件夹
-    DATA_LABELED = Path("data/labeled")  # 标注人脸文件夹
-    DATA_RESULTS = Path("data/results")  # 结果输出文件夹
-    CACHE_FILE = Path("data/embeddings_cache.pkl")  # 嵌入缓存
-    
-    # 创建结果文件夹
-    DATA_RESULTS.mkdir(exist_ok=True, parents=True)
+    DATA_ROOT = Path("data")
+    DATA_RAW = DATA_ROOT / "raw"          # 原始图片文件夹
+    DATA_LABELED = DATA_ROOT / "labeled"  # 标注人脸文件夹
+    DATA_RESULTS = DATA_ROOT / "results"  # 结果输出文件夹
+    CACHE_FILE = DATA_ROOT / "embeddings_cache.pkl"  # 嵌入缓存
     
     # 显示数据统计
     raw_images = list(DATA_RAW.glob("*.*"))
     labeled_images = list(DATA_LABELED.glob("*.*"))
     
     print(f"\n📁 数据统计:")
+    print(f"  - 原始图片文件夹: {DATA_RAW}")
+    print(f"  - 标注人脸文件夹: {DATA_LABELED}")
     print(f"  - 原始图片数量: {len(raw_images)}")
     print(f"  - 标注人脸数量: {len(labeled_images)}")
+    if not DATA_RAW.exists() or not DATA_LABELED.exists():
+        raise FileNotFoundError("请先创建 data/raw 和 data/labeled，并把数据放到对应文件夹中。")
+
+    # 创建结果文件夹
+    DATA_RESULTS.mkdir(exist_ok=True, parents=True)
     
     # 统计标注的人数
     names = set()

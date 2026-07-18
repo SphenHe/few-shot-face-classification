@@ -147,6 +147,10 @@ def detect_and_export(
     :param conflict: How to handle conflict in the data (warn, remove, or crash execution)
     :param draw_boxes: Whether to draw face boxes and names on output images
     """
+    raw_f = Path(raw_f)
+    labeled_f = Path(labeled_f)
+    write_f = Path(write_f)
+
     # First, validate that all labels are indeed correct. On crash, move bad images aside and retry.
     if conflict == Conflict.CRASH:
         error_dir = labeled_f.parent / "error_data"
@@ -170,14 +174,14 @@ def detect_and_export(
                 move(str(bad_path), dest)
     else:
         validate_labels(labeled_f, conflict=conflict)
-    
-        # Embed the data (cached when possible)
-        labeled_paths, labeled_embs = _load_or_create_embeddings(
-            labeled_f,
-            batch_size=batch_size,
-            cache_file=cache_file,
-            use_cache=use_cache,
-        )
+
+    # Embed the data (cached when possible)
+    labeled_paths, labeled_embs = _load_or_create_embeddings(
+        labeled_f,
+        batch_size=batch_size,
+        cache_file=cache_file,
+        use_cache=use_cache,
+    )
     
     # Embed and export by batch, load in images to export first
     paths = get_im_paths(raw_f)

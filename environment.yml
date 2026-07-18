@@ -1,0 +1,8 @@
+name: few-shot-face-classification
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - -e .
