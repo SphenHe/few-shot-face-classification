@@ -18,3 +18,4 @@ class Conflict(Enum):
     WARN = 0
     REMOVE = 1
     CRASH = 2
+    MOVE = 3

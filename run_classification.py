@@ -59,7 +59,7 @@ def main():
             labeled_f=DATA_LABELED,
             write_f=DATA_RESULTS,
             draw_boxes=True,  # 在输出照片上绘制人脸框框和名字
-            conflict=Conflict.REMOVE, # 遇到错误时移除问题图片
+            conflict=Conflict.MOVE,  # 遇到错误时移动到 data/error_data，避免丢失标注图片
             cache_file=CACHE_FILE,
             use_cache=True,
         )

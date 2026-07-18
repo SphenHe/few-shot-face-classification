@@ -16,6 +16,22 @@ from few_shot_face_classification.similarity import export, get_classes
 from few_shot_face_classification.utils import Conflict
 
 
+def _get_available_path(path: Path) -> Path:
+    """Return a path that does not overwrite an existing file."""
+    candidate = path
+    while candidate.exists():
+        candidate = candidate.with_name(f"{candidate.stem}_{getrandbits(16)}{candidate.suffix}")
+    return candidate
+
+
+def _move_invalid_label(path: Path, error_dir: Path) -> None:
+    """Move an invalid labeled image without overwriting existing files."""
+    error_dir.mkdir(exist_ok=True, parents=True)
+    dest = _get_available_path(error_dir / path.name)
+    print(f"Invalid image '{path}', moving to '{dest}'...")
+    move(str(path), str(dest))
+
+
 def _load_or_create_embeddings(
         labeled_f: Path,
         batch_size: int = 32,
@@ -98,16 +114,19 @@ def recognise(
 
 def validate_labels(
         labeled_f: Path,
-        conflict: Conflict = Conflict.CRASH,
+        conflict: Conflict = Conflict.MOVE,
 ) -> None:
     """
     Validate if the labeled data is correct.
     
     :param labeled_f: Folder with labeled data
-    :param conflict: How to handle conflict in the data (warn, remove, or crash execution)
+    :param conflict: How to handle conflict in the data (warn, remove, move, or crash execution)
     """
+    labeled_f = Path(labeled_f)
+
     # Get all image paths to validate
     paths = get_im_paths(labeled_f)
+    error_dir = labeled_f.parent / "error_data"
     
     # Load in networks used during validation
     mtcnn, vggface2 = get_networks()
@@ -121,6 +140,8 @@ def validate_labels(
             elif conflict == Conflict.REMOVE:
                 print(f"Invalid image '{path}', removing...")
                 path.unlink(missing_ok=True)
+            elif conflict == Conflict.MOVE:
+                _move_invalid_label(path, error_dir)
             elif conflict == Conflict.CRASH:
                 raise InvalidImageException(path)
 
@@ -131,7 +152,7 @@ def detect_and_export(
         write_f: Path,
         batch_size: int = 32,
         thr: float = 1.,
-        conflict: Conflict = Conflict.CRASH,
+        conflict: Conflict = Conflict.MOVE,
         draw_boxes: bool = True,
     cache_file: Optional[Path] = None,
     use_cache: bool = True,
@@ -144,36 +165,15 @@ def detect_and_export(
     :param write_f: Folder to which results are written
     :param batch_size: Batch size used during the export
     :param thr: Distance threshold
-    :param conflict: How to handle conflict in the data (warn, remove, or crash execution)
+    :param conflict: How to handle conflict in the data (warn, remove, move, or crash execution)
     :param draw_boxes: Whether to draw face boxes and names on output images
     """
     raw_f = Path(raw_f)
     labeled_f = Path(labeled_f)
     write_f = Path(write_f)
 
-    # First, validate that all labels are indeed correct. On crash, move bad images aside and retry.
-    if conflict == Conflict.CRASH:
-        error_dir = labeled_f.parent / "error_data"
-        error_dir.mkdir(exist_ok=True, parents=True)
-
-        while True:
-            try:
-                validate_labels(labeled_f, conflict=conflict)
-                break
-            except InvalidImageException as exc:
-                bad_path = getattr(exc, "path", None)
-                if bad_path is None:
-                    raise
-
-                bad_path = Path(bad_path)
-                dest = error_dir / bad_path.name
-                while dest.exists():
-                    dest = dest.with_name(f"{dest.stem}_{getrandbits(16)}{dest.suffix}")
-
-                print(f"Invalid image '{bad_path}', moving to '{dest}' and retrying validation...")
-                move(str(bad_path), dest)
-    else:
-        validate_labels(labeled_f, conflict=conflict)
+    # First, validate that all labels are indeed correct.
+    validate_labels(labeled_f, conflict=conflict)
 
     # Embed the data (cached when possible)
     labeled_paths, labeled_embs = _load_or_create_embeddings(
