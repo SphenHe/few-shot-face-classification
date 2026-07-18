@@ -1,12 +1,12 @@
 import argparse
-import pickle
 from pathlib import Path
 
 import cv2
 import numpy as np
 from PIL import Image
 
-from few_shot_face_classification.embed import embed, embed_folder, get_networks
+from few_shot_face_classification.cache import load_or_create_embeddings as load_or_create_cached_embeddings
+from few_shot_face_classification.embed import embed, get_networks
 from few_shot_face_classification.similarity import _draw_faces_on_image, get_classes
 
 
@@ -24,54 +24,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_or_create_embeddings(labeled_folder: Path, cache_file: Path, batch_size: int, use_cache: bool = True):
-    """Load embeddings from cache or create new ones."""
-    def _restore_paths(raw_paths):
-        # Rebuild paths relative to current labeled folder to stay cross-platform
-        restored = []
-        for p in raw_paths:
-            # Accept stored as str or Path-like; treat as relative path
-            rel = Path(p)
-            restored.append(labeled_folder / rel)
-        return restored
-
-    # Check if cache exists and is newer than labeled folder
-    cache_valid = False
-    if use_cache and cache_file.exists():
-        cache_mtime = cache_file.stat().st_mtime
-        # Check if any file in labeled folder is newer than cache
-        labeled_files = list(labeled_folder.glob("*"))
-        if labeled_files:
-            newest_labeled = max(f.stat().st_mtime for f in labeled_files if f.is_file())
-            cache_valid = cache_mtime > newest_labeled
-        
-    if cache_valid:
-        print(f"Loading embeddings from cache: {cache_file}")
-        try:
-            with open(cache_file, "rb") as f:
-                data = pickle.load(f)
-            labeled_paths = _restore_paths(data["paths"])
-            labeled_embs = data["embeddings"]
-            print(f"Loaded {len(labeled_embs)} cached embeddings")
-            return labeled_paths, labeled_embs
-        except Exception as e:
-            print(f"Failed to load cache: {e}")
-            print("Re-processing labeled images...")
-    
-    # Process labeled images
-    print("Processing labeled images...")
-    labeled_paths, labeled_embs = embed_folder(labeled_folder, batch_size=batch_size)
-    
-    # Save to cache
-    try:
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        rel_paths = [p.relative_to(labeled_folder).as_posix() for p in labeled_paths]
-        with open(cache_file, "wb") as f:
-            pickle.dump({"paths": rel_paths, "embeddings": labeled_embs}, f)
-        print(f"Saved embeddings to cache: {cache_file}")
-    except Exception as e:
-        print(f"Warning: Failed to save cache: {e}")
-    
-    return labeled_paths, labeled_embs
+    return load_or_create_cached_embeddings(
+        labeled_folder=labeled_folder,
+        batch_size=batch_size,
+        cache_file=cache_file,
+        use_cache=use_cache,
+        log=print,
+    )
 
 
 def main() -> None:

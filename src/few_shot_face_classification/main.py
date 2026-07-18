@@ -1,14 +1,14 @@
 """Complete A to Z functions on the data."""
-import pickle
 from glob import glob
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from random import getrandbits
 from shutil import move
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, List, Optional, Set
 
 from tqdm import tqdm
 
+from few_shot_face_classification.cache import load_or_create_embeddings
 from few_shot_face_classification.data import get_im_paths, load_single
 from few_shot_face_classification.embed import embed, embed_batch, embed_folder, get_networks, validate_face
 from few_shot_face_classification.exceptions import InvalidImageException
@@ -30,61 +30,6 @@ def _move_invalid_label(path: Path, error_dir: Path) -> None:
     dest = _get_available_path(error_dir / path.name)
     print(f"Invalid image '{path}', moving to '{dest}'...")
     move(str(path), str(dest))
-
-
-def _load_or_create_embeddings(
-        labeled_f: Path,
-        batch_size: int = 32,
-        cache_file: Optional[Path] = None,
-        use_cache: bool = True,
-) -> Tuple[List[Path], List[Any]]:
-    """Load labeled embeddings from cache when valid, otherwise compute and persist.
-
-    The cache is considered valid when it exists and is newer than any file in the
-    labeled folder. If loading fails, we transparently recompute and overwrite.
-    """
-    # Short-circuit if caching is disabled or no cache file provided
-    if not use_cache or cache_file is None:
-        return embed_folder(labeled_f, batch_size=batch_size)
-
-    def _restore_paths(raw_paths):
-        # Rebuild paths relative to labeled folder for cross-platform portability
-        restored = []
-        for p in raw_paths:
-            restored.append(labeled_f / Path(p))
-        return restored
-
-    cache_valid = False
-    if cache_file.exists():
-        cache_mtime = cache_file.stat().st_mtime
-        labeled_files = [f for f in labeled_f.glob("*") if f.is_file()]
-        if labeled_files:
-            newest_labeled = max(f.stat().st_mtime for f in labeled_files)
-            cache_valid = cache_mtime > newest_labeled
-
-    if cache_valid:
-        try:
-            with open(cache_file, "rb") as f:
-                data = pickle.load(f)
-            labeled_paths = _restore_paths(data["paths"])
-            labeled_embs = data["embeddings"]
-            return labeled_paths, labeled_embs
-        except Exception:
-            # If cache read fails, fall back to recompute
-            pass
-
-    labeled_paths, labeled_embs = embed_folder(labeled_f, batch_size=batch_size)
-
-    try:
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        rel_paths = [p.relative_to(labeled_f).as_posix() for p in labeled_paths]
-        with open(cache_file, "wb") as f:
-            pickle.dump({"paths": rel_paths, "embeddings": labeled_embs}, f)
-    except Exception:
-        # Cache write failure should not block main flow
-        pass
-
-    return labeled_paths, labeled_embs
 
 
 def recognise(
@@ -176,7 +121,7 @@ def detect_and_export(
     validate_labels(labeled_f, conflict=conflict)
 
     # Embed the data (cached when possible)
-    labeled_paths, labeled_embs = _load_or_create_embeddings(
+    labeled_paths, labeled_embs = load_or_create_embeddings(
         labeled_f,
         batch_size=batch_size,
         cache_file=cache_file,
