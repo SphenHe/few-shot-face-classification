@@ -199,7 +199,8 @@ def detect_and_export(
         ))
     
     # Embed and export each chunk
-    with Pool(cpu_count() - 2) as p:
+    workers = max(1, cpu_count() - 2)
+    with Pool(workers) as p:
         list(tqdm(p.imap(_embed_and_export, chunks), total=len(chunks), desc="Exporting"))
 
 

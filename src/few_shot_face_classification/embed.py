@@ -111,7 +111,8 @@ def embed_folder(
         chunks.append(paths[i:i + batch_size])
     
     # Create embeddings for each chunk
-    with Pool(cpu_count() - 2) as p:
+    workers = max(1, cpu_count() - 2)
+    with Pool(workers) as p:
         results = list(tqdm(p.imap(embed_batch, chunks), total=len(chunks), desc="Processing"))
     
     # Flatten out the results and return
