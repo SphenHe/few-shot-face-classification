@@ -126,6 +126,18 @@ detect_and_export(
 默认 `conflict=Conflict.MOVE`，标注图片无效时会移动到 `data/error_data/` 后继续处理；目录不存在时会自动创建，重名时会自动保留两份文件。
 如果希望遇到无效标注图片时直接停止且不移动或删除 `data/labeled/` 中的文件，可显式传入 `conflict=Conflict.CRASH`。
 
+批量识别、单张识别和实时识别可以共用同一个 embedding cache。需要预先构建缓存时，可调用：
+
+```python
+from pathlib import Path
+from few_shot_face_classification import build_embeddings_cache
+
+build_embeddings_cache(
+    labeled_folder=Path("data/labeled"),
+    cache_file=Path("data/embeddings_cache.pkl"),
+)
+```
+
 识别单张图片：
 
 ```python
@@ -135,6 +147,7 @@ from few_shot_face_classification import recognise
 classes = recognise(
     path=Path("data/raw/example.jpg"),
     labeled_f=Path("data/labeled"),
+    cache_file=Path("data/embeddings_cache.pkl"),
 )
 print(classes)
 ```

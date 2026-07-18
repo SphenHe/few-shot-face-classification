@@ -8,9 +8,9 @@ from typing import Any, List, Optional, Set
 
 from tqdm import tqdm
 
-from few_shot_face_classification.cache import load_or_create_embeddings
+from few_shot_face_classification.cache import load_or_build_embeddings_cache
 from few_shot_face_classification.data import get_im_paths, load_single
-from few_shot_face_classification.embed import embed, embed_batch, embed_folder, get_networks, validate_face
+from few_shot_face_classification.embed import embed, embed_batch, get_networks, validate_face
 from few_shot_face_classification.exceptions import InvalidImageException
 from few_shot_face_classification.similarity import export, get_classes
 from few_shot_face_classification.utils import Conflict
@@ -36,6 +36,9 @@ def recognise(
         path: Path,
         labeled_f: Path,
         thr: float = 1.,
+        batch_size: int = 32,
+        cache_file: Optional[Path] = None,
+        use_cache: bool = True,
 ) -> Set[str]:
     """Recognise all labeled faces present in the image, as specified by the provided path."""
     # Load in the image in which the faces are to be recognised
@@ -45,7 +48,12 @@ def recognise(
     embs = embed(im)
     
     # Embed the data
-    labeled_paths, labeled_embs = embed_folder(labeled_f)
+    labeled_paths, labeled_embs = load_or_build_embeddings_cache(
+        labeled_f,
+        batch_size=batch_size,
+        cache_file=cache_file,
+        use_cache=use_cache,
+    )
     
     # Detect and return all classes
     classes = get_classes(
@@ -121,7 +129,7 @@ def detect_and_export(
     validate_labels(labeled_f, conflict=conflict)
 
     # Embed the data (cached when possible)
-    labeled_paths, labeled_embs = load_or_create_embeddings(
+    labeled_paths, labeled_embs = load_or_build_embeddings_cache(
         labeled_f,
         batch_size=batch_size,
         cache_file=cache_file,

@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from few_shot_face_classification.cache import load_or_create_embeddings as load_or_create_cached_embeddings
+from few_shot_face_classification.cache import load_or_build_embeddings_cache
 from few_shot_face_classification.embed import embed, get_networks
 from few_shot_face_classification.similarity import _draw_faces_on_image, get_classes
 
@@ -23,25 +23,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_or_create_embeddings(labeled_folder: Path, cache_file: Path, batch_size: int, use_cache: bool = True):
-    return load_or_create_cached_embeddings(
-        labeled_folder=labeled_folder,
-        batch_size=batch_size,
-        cache_file=cache_file,
-        use_cache=use_cache,
-        log=print,
-    )
-
-
 def main() -> None:
     args = parse_args()
 
     # Load or create labeled embeddings with caching
-    labeled_paths, labeled_embs = load_or_create_embeddings(
-        args.labeled, 
-        args.cache, 
-        args.batch_size, 
-        use_cache=not args.no_cache
+    labeled_paths, labeled_embs = load_or_build_embeddings_cache(
+        labeled_folder=args.labeled,
+        cache_file=args.cache,
+        batch_size=args.batch_size,
+        use_cache=not args.no_cache,
+        log=print,
     )
     print(f"Ready with {len(labeled_embs)} labeled faces from {args.labeled}")
 

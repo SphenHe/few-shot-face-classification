@@ -97,9 +97,39 @@ def load_or_create_embeddings(
         use_cache: bool = True,
         log: _Logger = None,
 ) -> Tuple[List[Path], List[Any]]:
-    """Load cached embeddings when the current labeled files are represented."""
+    """Backward-compatible alias for load_or_build_embeddings_cache."""
+    return load_or_build_embeddings_cache(
+        labeled_folder=labeled_folder,
+        batch_size=batch_size,
+        cache_file=cache_file,
+        use_cache=use_cache,
+        log=log,
+    )
+
+
+def build_embeddings_cache(
+        labeled_folder: Path,
+        cache_file: Optional[Path] = None,
+        batch_size: int = 32,
+        log: _Logger = None,
+) -> Tuple[List[Path], List[Any]]:
+    """Build labeled embeddings and optionally persist them to cache."""
+    labeled_paths, labeled_embeddings = embed_folder(labeled_folder, batch_size=batch_size)
+    if cache_file is not None:
+        save_embeddings_cache(Path(cache_file), Path(labeled_folder), labeled_paths, labeled_embeddings, log=log)
+    return labeled_paths, labeled_embeddings
+
+
+def load_or_build_embeddings_cache(
+        labeled_folder: Path,
+        batch_size: int = 32,
+        cache_file: Optional[Path] = None,
+        use_cache: bool = True,
+        log: _Logger = None,
+) -> Tuple[List[Path], List[Any]]:
+    """Load cached embeddings when possible, otherwise build the shared cache."""
     if not use_cache or cache_file is None:
-        return embed_folder(labeled_folder, batch_size=batch_size)
+        return build_embeddings_cache(labeled_folder, batch_size=batch_size, log=log)
 
     labeled_folder = Path(labeled_folder)
     cache_file = Path(cache_file)
@@ -119,8 +149,6 @@ def load_or_create_embeddings(
             current_files = _file_metadata(labeled_folder)
             if _cache_matches_current_files(data, current_files, cache_file, labeled_folder):
                 paths, embeddings = _filter_current_embeddings(paths, embeddings, labeled_folder, current_files)
-                if len(paths) != len(data["paths"]):
-                    save_embeddings_cache(cache_file, labeled_folder, paths, embeddings, log=log)
                 if log is not None:
                     log(f"Loaded {len(embeddings)} cached embeddings")
                 return paths, embeddings
@@ -132,6 +160,4 @@ def load_or_create_embeddings(
                 log(f"Failed to load cache: {exc}")
                 log("Re-processing labeled images...")
 
-    labeled_paths, labeled_embeddings = embed_folder(labeled_folder, batch_size=batch_size)
-    save_embeddings_cache(cache_file, labeled_folder, labeled_paths, labeled_embeddings, log=log)
-    return labeled_paths, labeled_embeddings
+    return build_embeddings_cache(labeled_folder, cache_file=cache_file, batch_size=batch_size, log=log)
