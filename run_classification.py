@@ -3,6 +3,7 @@
 使用你的数据进行人脸识别和分类
 """
 
+import os
 from pathlib import Path
 from few_shot_face_classification import detect_and_export
 from few_shot_face_classification.utils import Conflict
@@ -19,6 +20,9 @@ def main():
     DATA_LABELED = DATA_ROOT / "labeled"  # 标注人脸文件夹
     DATA_RESULTS = DATA_ROOT / "results"  # 结果输出文件夹
     CACHE_FILE = DATA_ROOT / "embeddings_cache.pkl"  # 嵌入缓存
+    DEVICE = "cpu"  # 可改为 "cuda" 使用 GPU；或改为 "auto" 自动选择
+    NUM_WORKERS = int(os.getenv("FSFC_NUM_WORKERS", "4"))  # CPU 进程数，服务器多核时不要开太大
+    DRAW_BOXES = os.getenv("FSFC_DRAW_BOXES", "1") != "0"  # 设为 0 可跳过画框以提速
     
     # 显示数据统计
     raw_images = list(DATA_RAW.glob("*.*"))
@@ -58,10 +62,12 @@ def main():
             raw_f=DATA_RAW,
             labeled_f=DATA_LABELED,
             write_f=DATA_RESULTS,
-            draw_boxes=True,  # 在输出照片上绘制人脸框框和名字
+            draw_boxes=DRAW_BOXES,  # 在输出照片上绘制人脸框框和名字
             conflict=Conflict.MOVE,  # 遇到错误时移动到 data/error_data，避免丢失标注图片
             cache_file=CACHE_FILE,
             use_cache=True,
+            device=DEVICE,
+            num_workers=NUM_WORKERS,
         )
         
         print("\n" + "="*60)

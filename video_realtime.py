@@ -20,6 +20,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for loading labeled embeddings")
     parser.add_argument("--cache", type=Path, default=Path("data/embeddings_cache.pkl"), help="Cache file for embeddings")
     parser.add_argument("--no-cache", action="store_true", help="Force re-processing without using cache")
+    parser.add_argument("--device", choices=["cpu", "cuda", "auto"], default="cpu", help="Torch device for embeddings")
+    parser.add_argument("--num-workers", type=int, default=None, help="CPU workers for building labeled embeddings")
     return parser.parse_args()
 
 
@@ -32,12 +34,14 @@ def main() -> None:
         cache_file=args.cache,
         batch_size=args.batch_size,
         use_cache=not args.no_cache,
+        device=args.device,
+        num_workers=args.num_workers,
         log=print,
     )
     print(f"Ready with {len(labeled_embs)} labeled faces from {args.labeled}")
 
     # Load networks (auto-select GPU if available)
-    mtcnn, vggface2 = get_networks()
+    mtcnn, vggface2 = get_networks(device=args.device)
 
     cap = cv2.VideoCapture(args.camera)
     if args.width:
@@ -63,7 +67,7 @@ def main() -> None:
         boxes, _ = mtcnn.detect(pil_im)
         
         # Compute embeddings for detected faces
-        embs = embed(pil_im, mtcnn=mtcnn, vggface2=vggface2)
+        embs = embed(pil_im, mtcnn=mtcnn, vggface2=vggface2, device=args.device)
 
         if boxes is not None and len(boxes) > 0:
             names = get_classes(embs, labeled_paths, labeled_embs, thr=args.threshold)

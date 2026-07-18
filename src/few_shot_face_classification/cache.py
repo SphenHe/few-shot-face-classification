@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from few_shot_face_classification.data import get_im_paths
-from few_shot_face_classification.embed import embed_batch, embed_folder
+from few_shot_face_classification.embed import embed_paths, embed_folder
 
 
 _CACHE_VERSION = 2
@@ -73,15 +73,6 @@ def _filter_embeddings(
     return filtered_paths, filtered_embeddings
 
 
-def _embed_paths(paths: List[Path], batch_size: int) -> Tuple[List[Path], List[Any]]:
-    embedded_paths, embeddings = [], []
-    for i in range(0, len(paths), batch_size):
-        batch_paths, batch_embeddings = embed_batch(paths[i:i + batch_size])
-        embedded_paths.extend(batch_paths)
-        embeddings.extend(batch_embeddings)
-    return embedded_paths, embeddings
-
-
 def save_embeddings_cache(
         cache_file: Path,
         labeled_folder: Path,
@@ -112,6 +103,8 @@ def load_or_create_embeddings(
         batch_size: int = 32,
         cache_file: Optional[Path] = None,
         use_cache: bool = True,
+        device: str = "cpu",
+        num_workers: Optional[int] = None,
         log: _Logger = None,
 ) -> Tuple[List[Path], List[Any]]:
     """Backward-compatible alias for load_or_build_embeddings_cache."""
@@ -120,6 +113,8 @@ def load_or_create_embeddings(
         batch_size=batch_size,
         cache_file=cache_file,
         use_cache=use_cache,
+        device=device,
+        num_workers=num_workers,
         log=log,
     )
 
@@ -128,10 +123,17 @@ def build_embeddings_cache(
         labeled_folder: Path,
         cache_file: Optional[Path] = None,
         batch_size: int = 32,
+        device: str = "cpu",
+        num_workers: Optional[int] = None,
         log: _Logger = None,
 ) -> Tuple[List[Path], List[Any]]:
     """Build labeled embeddings and optionally persist them to cache."""
-    labeled_paths, labeled_embeddings = embed_folder(labeled_folder, batch_size=batch_size)
+    labeled_paths, labeled_embeddings = embed_folder(
+        labeled_folder,
+        batch_size=batch_size,
+        device=device,
+        num_workers=num_workers,
+    )
     if cache_file is not None:
         save_embeddings_cache(Path(cache_file), Path(labeled_folder), labeled_paths, labeled_embeddings, log=log)
     return labeled_paths, labeled_embeddings
@@ -142,11 +144,19 @@ def load_or_build_embeddings_cache(
         batch_size: int = 32,
         cache_file: Optional[Path] = None,
         use_cache: bool = True,
+        device: str = "cpu",
+        num_workers: Optional[int] = None,
         log: _Logger = None,
 ) -> Tuple[List[Path], List[Any]]:
     """Load cached embeddings when possible, otherwise build the shared cache."""
     if not use_cache or cache_file is None:
-        return build_embeddings_cache(labeled_folder, batch_size=batch_size, log=log)
+        return build_embeddings_cache(
+            labeled_folder,
+            batch_size=batch_size,
+            device=device,
+            num_workers=num_workers,
+            log=log,
+        )
 
     labeled_folder = Path(labeled_folder)
     cache_file = Path(cache_file)
@@ -174,7 +184,12 @@ def load_or_build_embeddings_cache(
             pending_paths = [labeled_folder / path for path in sorted(pending)]
             if log is not None:
                 log(f"Embedding {len(pending_paths)} new or changed labeled images...")
-            new_paths, new_embeddings = _embed_paths(pending_paths, batch_size)
+            new_paths, new_embeddings = embed_paths(
+                pending_paths,
+                batch_size=batch_size,
+                device=device,
+                num_workers=num_workers,
+            )
             paths.extend(new_paths)
             embeddings.extend(new_embeddings)
             save_embeddings_cache(cache_file, labeled_folder, paths, embeddings, log=log)
@@ -184,4 +199,11 @@ def load_or_build_embeddings_cache(
                 log(f"Failed to load cache: {exc}")
                 log("Re-processing labeled images...")
 
-    return build_embeddings_cache(labeled_folder, cache_file=cache_file, batch_size=batch_size, log=log)
+    return build_embeddings_cache(
+        labeled_folder,
+        cache_file=cache_file,
+        batch_size=batch_size,
+        device=device,
+        num_workers=num_workers,
+        log=log,
+    )

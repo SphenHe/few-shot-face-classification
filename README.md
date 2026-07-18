@@ -120,6 +120,7 @@ detect_and_export(
     raw_f=Path("data/raw"),
     labeled_f=Path("data/labeled"),
     write_f=Path("data/results"),
+    device="cuda",
 )
 ```
 
@@ -135,10 +136,42 @@ from few_shot_face_classification import build_embeddings_cache
 build_embeddings_cache(
     labeled_folder=Path("data/labeled"),
     cache_file=Path("data/embeddings_cache.pkl"),
+    device="cuda",  # 没有 CUDA 环境时使用 "cpu"，或使用 "auto" 自动选择
+    num_workers=4,
 )
 ```
 
 cache 会按标注图片文件清单、修改时间和文件大小判断是否可复用。删除图片时只在内存中过滤，不会改写 cache；新增或修改图片时只补算对应图片的 embedding，并保留未变化图片的已有 cache。
+
+CPU 服务器上不要直接按 CPU 核数开满进程。默认最多使用 4 个 CPU worker，每个 worker 内部默认只使用 1 个 PyTorch 线程；可以按机器情况调整：
+
+```bash
+FSFC_NUM_WORKERS=4 FSFC_TORCH_THREADS=1 python3 run_classification.py
+```
+
+如果不需要输出图片上的人脸框和名字，可以跳过二次检测以提速：
+
+```bash
+FSFC_DRAW_BOXES=0 python3 run_classification.py
+```
+
+使用 GPU 前需要安装 CUDA 版 PyTorch，并确认当前环境能访问 CUDA：
+
+```bash
+python3 -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+```
+
+如果输出 `False`，请按 PyTorch 官网安装页面选择与你机器匹配的 CUDA 版本重新安装 `torch`、`torchvision` 和 `torchaudio`。例如 CUDA 12.8 的 pip wheel：
+
+```bash
+python3 -m pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+```
+
+实时识别使用 GPU：
+
+```bash
+python video_realtime.py --device cuda
+```
 
 识别单张图片：
 
@@ -150,6 +183,7 @@ classes = recognise(
     path=Path("data/raw/example.jpg"),
     labeled_f=Path("data/labeled"),
     cache_file=Path("data/embeddings_cache.pkl"),
+    device="cuda",
 )
 print(classes)
 ```

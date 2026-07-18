@@ -49,6 +49,7 @@ def export(
         write_f: Path,
         thr: float = 1.,
         draw_boxes: bool = True,
+        device: str = "cpu",
 ) -> None:
     """
     Export (copy) all images to their corresponding class (recognised person).
@@ -61,6 +62,7 @@ def export(
     :param write_f: Folder to write results to (in corresponding subfolders)
     :param thr: Distance threshold
     :param draw_boxes: Whether to draw face boxes and names on the output images
+    :param device: Torch device for embedding ("cpu", "cuda", or "auto")
     """
     # Derive all the labeled classes
     classes = get_classes(
@@ -73,7 +75,7 @@ def export(
     # Import MTCNN for face detection if drawing boxes
     if draw_boxes:
         from few_shot_face_classification.embed import get_networks, embed
-        mtcnn, vggface2 = get_networks()
+        mtcnn, vggface2 = get_networks(device=device)
     
     # Assign images to correct class
     for cls, path in zip(classes, paths):
@@ -97,7 +99,7 @@ def export(
                 # Only process if faces were detected
                 if batch_boxes is not None and len(batch_boxes) > 0:
                     # Get embeddings for all detected faces
-                    face_embs = embed(im, mtcnn=mtcnn, vggface2=vggface2)
+                    face_embs = embed(im, mtcnn=mtcnn, vggface2=vggface2, device=device)
                     
                     # Identify each face separately
                     face_names = get_classes(
