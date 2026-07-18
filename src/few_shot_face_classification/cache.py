@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from few_shot_face_classification.data import get_im_paths
-from few_shot_face_classification.embed import embed_folder
+from few_shot_face_classification.embed import embed_batch, embed_folder
 
 
 _CACHE_VERSION = 2
@@ -31,38 +31,55 @@ def _restore_paths(raw_paths: List[Any], folder: Path) -> List[Path]:
     return [folder / Path(path) for path in raw_paths]
 
 
-def _cache_matches_current_files(
+def _current_cached_files(
         data: Dict[str, Any],
         current_files: _FileMeta,
         cache_file: Path,
         folder: Path,
-) -> bool:
+) -> Tuple[set, set]:
+    """Return current file paths that can be reused and paths that need embedding."""
     cached_paths = {Path(path).as_posix() for path in data.get("paths", [])}
     current_paths = set(current_files)
-    if not current_paths.issubset(cached_paths):
-        return False
 
     cached_files = data.get("files")
     if cached_files is not None:
-        return all(cached_files.get(path) == meta for path, meta in current_files.items())
+        cached_current = {
+            path
+            for path, meta in current_files.items()
+            if path in cached_paths and cached_files.get(path) == meta
+        }
+        return cached_current, current_paths - cached_current
 
     cache_mtime = cache_file.stat().st_mtime
-    return all((folder / path).stat().st_mtime < cache_mtime for path in current_paths)
+    cached_current = {
+        path
+        for path in current_paths
+        if path in cached_paths and (folder / path).stat().st_mtime < cache_mtime
+    }
+    return cached_current, current_paths - cached_current
 
 
-def _filter_current_embeddings(
+def _filter_embeddings(
         paths: List[Path],
         embeddings: List[Any],
         folder: Path,
-        current_files: _FileMeta,
+        keep_paths: set,
 ) -> Tuple[List[Path], List[Any]]:
-    current_paths = set(current_files)
     filtered_paths, filtered_embeddings = [], []
     for path, embedding in zip(paths, embeddings):
-        if _relative_path(path, folder) in current_paths:
+        if _relative_path(path, folder) in keep_paths:
             filtered_paths.append(path)
             filtered_embeddings.append(embedding)
     return filtered_paths, filtered_embeddings
+
+
+def _embed_paths(paths: List[Path], batch_size: int) -> Tuple[List[Path], List[Any]]:
+    embedded_paths, embeddings = [], []
+    for i in range(0, len(paths), batch_size):
+        batch_paths, batch_embeddings = embed_batch(paths[i:i + batch_size])
+        embedded_paths.extend(batch_paths)
+        embeddings.extend(batch_embeddings)
+    return embedded_paths, embeddings
 
 
 def save_embeddings_cache(
@@ -147,14 +164,21 @@ def load_or_build_embeddings_cache(
                 raise ValueError("Cached paths and embeddings have different lengths")
 
             current_files = _file_metadata(labeled_folder)
-            if _cache_matches_current_files(data, current_files, cache_file, labeled_folder):
-                paths, embeddings = _filter_current_embeddings(paths, embeddings, labeled_folder, current_files)
+            cached_current, pending = _current_cached_files(data, current_files, cache_file, labeled_folder)
+            paths, embeddings = _filter_embeddings(paths, embeddings, labeled_folder, cached_current)
+            if not pending:
                 if log is not None:
                     log(f"Loaded {len(embeddings)} cached embeddings")
                 return paths, embeddings
 
+            pending_paths = [labeled_folder / path for path in sorted(pending)]
             if log is not None:
-                log("Cache does not match current labeled images; re-processing labeled images...")
+                log(f"Embedding {len(pending_paths)} new or changed labeled images...")
+            new_paths, new_embeddings = _embed_paths(pending_paths, batch_size)
+            paths.extend(new_paths)
+            embeddings.extend(new_embeddings)
+            save_embeddings_cache(cache_file, labeled_folder, paths, embeddings, log=log)
+            return paths, embeddings
         except Exception as exc:
             if log is not None:
                 log(f"Failed to load cache: {exc}")

@@ -138,6 +138,8 @@ build_embeddings_cache(
 )
 ```
 
+cache 会按标注图片文件清单、修改时间和文件大小判断是否可复用。删除图片时只在内存中过滤，不会改写 cache；新增或修改图片时只补算对应图片的 embedding，并保留未变化图片的已有 cache。
+
 识别单张图片：
 
 ```python
