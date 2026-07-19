@@ -96,6 +96,64 @@ python test_cv.py
 python video_realtime.py
 ```
 
+## 实时自动签到
+
+签到程序左侧显示实时摄像头和识别框，右侧显示完整名单：已到为绿色，未到为红色。默认在最近 5 次模型推理中至少 3 次识别为同一人后自动签到，避免单帧误识别。
+
+先准备 UTF-8 编码的 `data/roster.csv`，表头可以是 `姓名` 或 `name`：
+
+```csv
+姓名
+张三
+李四
+```
+
+名单中的姓名必须唯一。标注照片统一使用 `姓名_序号.jpg` 格式：
+
+```text
+data/labeled/
+├── 张三_1.jpg
+├── 张三_2.jpg
+├── 李四_1.jpg
+└── none_1.jpg
+```
+
+横线分隔、姓名后直接接数字或哈希文件名无法可靠对应名单，会在签到程序中被忽略并提示。请先将有效照片重命名；`none_序号.jpg` 仍可作为非目标人物样本。
+
+启动签到：
+
+```bash
+python attendance_app.py
+```
+
+使用 GPU 或其他摄像头：
+
+```bash
+python attendance_app.py --device cuda --camera 1
+```
+
+常用参数：
+
+```bash
+python attendance_app.py \
+  --roster data/roster.csv \
+  --labeled data/labeled \
+  --threshold 1.0 \
+  --confirm-hits 3 \
+  --confirm-window 5
+```
+
+签到状态会实时写入：
+
+```text
+data/attendance/
+├── current.csv  # 当前名单状态和签到时间
+├── events.csv   # 自动签到、人工补签和撤销记录
+└── archive/     # 点击“新建签到”后归档的旧记录
+```
+
+程序重启会恢复 `current.csv`。右侧选择或双击学生可以人工补签；撤销已签到状态时会要求确认，所有修改都会写入事件日志。“新建签到”会先归档当前记录，再生成一份全员未到的新名单。
+
 清理结果：
 
 ```bash
