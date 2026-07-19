@@ -6,6 +6,7 @@
 import os
 from pathlib import Path
 from few_shot_face_classification import detect_and_export
+from few_shot_face_classification.embed import resolve_num_workers, resolve_torch_threads
 from few_shot_face_classification.utils import Conflict
 
 
@@ -22,6 +23,7 @@ def main():
     CACHE_FILE = DATA_ROOT / "embeddings_cache.pkl"  # 嵌入缓存
     DEVICE = "cpu"  # 可改为 "cuda" 使用 GPU；或改为 "auto" 自动选择
     NUM_WORKERS = int(os.environ["FSFC_NUM_WORKERS"]) if "FSFC_NUM_WORKERS" in os.environ else None
+    BATCH_SIZE = int(os.getenv("FSFC_BATCH_SIZE", "32"))
     DRAW_BOXES = os.getenv("FSFC_DRAW_BOXES", "1") != "0"  # 设为 0 可跳过画框以提速
     
     # 显示数据统计
@@ -54,6 +56,9 @@ def main():
     print(f"\n⏳ 开始处理...")
     print(f"  ⚠️  首次运行会下载预训练模型（约100MB），请耐心等待")
     print(f"  ⚠️  处理{len(raw_images)}张图片可能需要几分钟时间")
+    print(f"  - CPU worker 数: {resolve_num_workers(NUM_WORKERS)}")
+    print(f"  - 每个 worker 的 PyTorch 线程数: {resolve_torch_threads()}")
+    print(f"  - 图片 batch size: {BATCH_SIZE}")
     print()
     
     # 执行分类
@@ -62,6 +67,7 @@ def main():
             raw_f=DATA_RAW,
             labeled_f=DATA_LABELED,
             write_f=DATA_RESULTS,
+            batch_size=BATCH_SIZE,
             draw_boxes=DRAW_BOXES,  # 在输出照片上绘制人脸框框和名字
             conflict=Conflict.MOVE,  # 遇到错误时移动到 data/error_data，避免丢失标注图片
             cache_file=CACHE_FILE,

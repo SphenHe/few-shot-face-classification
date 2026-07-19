@@ -19,6 +19,7 @@ from few_shot_face_classification.exceptions import MultipleFaceException, NoFac
 warnings.filterwarnings("ignore", category=UserWarning)
 
 _APPROX_MODEL_MEMORY_GB_PER_WORKER = 1.5
+_DEFAULT_MAX_AUTO_WORKERS = 32
 _WORKER_MTCNN = None
 _WORKER_VGGFACE2 = None
 _WORKER_DEVICE = "cpu"
@@ -54,7 +55,7 @@ def get_networks(device: str = "cpu") -> Tuple[MTCNN, InceptionResnetV1]:
 
 
 def resolve_num_workers(num_workers: Optional[int] = None) -> int:
-    """Resolve a conservative CPU worker count for model-heavy multiprocessing."""
+    """Resolve a CPU worker count for model-heavy multiprocessing."""
     if num_workers is None:
         raw = os.getenv("FSFC_NUM_WORKERS")
         if raw:
@@ -69,15 +70,71 @@ def resolve_num_workers(num_workers: Optional[int] = None) -> int:
         return num_workers
 
     available_cpus = _available_cpu_count()
-    # Each worker owns a model copy. Past a small number of workers, CPU face
-    # detection and embedding usually become memory-bandwidth bound and slow
-    # down from process scheduling/model duplication. Keep the automatic choice
-    # conservative; FSFC_NUM_WORKERS can still override it for benchmarking.
-    cpu_workers = min(3, max(1, math.ceil(available_cpus / 4)))
+    torch_threads = resolve_torch_threads()
+
+    # Each worker owns an MTCNN and embedding model, so process count should grow
+    # sublinearly with available CPUs. Very large CPU machines are often limited
+    # by memory bandwidth, image decode, and model duplication before they are
+    # limited by core count, so cpu/2 is too aggressive at 192+ cores.
+    cpu_workers = max(1, math.floor(available_cpus / torch_threads))
+    if available_cpus <= 2:
+        suggested_workers = 1
+    elif available_cpus <= 4:
+        suggested_workers = 2
+    else:
+        suggested_workers = max(2, math.ceil(math.sqrt(available_cpus) * 2))
+    cpu_workers = min(cpu_workers, suggested_workers, resolve_max_auto_workers())
+
     memory_workers = _estimate_memory_limited_workers()
     if memory_workers is not None:
         cpu_workers = min(cpu_workers, memory_workers)
     return max(1, cpu_workers)
+
+
+def resolve_torch_threads() -> int:
+    """Resolve PyTorch intra-op thread count used inside CPU workers."""
+    raw = os.getenv("FSFC_TORCH_THREADS", "1")
+    try:
+        threads = int(raw)
+    except ValueError:
+        raise ValueError("FSFC_TORCH_THREADS must be an integer")
+    if threads < 1:
+        raise ValueError("FSFC_TORCH_THREADS must be >= 1")
+    return threads
+
+
+def resolve_max_auto_workers() -> int:
+    """Resolve the upper bound for automatic CPU worker selection."""
+    raw = os.getenv("FSFC_MAX_AUTO_WORKERS")
+    if not raw:
+        return _DEFAULT_MAX_AUTO_WORKERS
+    try:
+        max_workers = int(raw)
+    except ValueError:
+        raise ValueError("FSFC_MAX_AUTO_WORKERS must be an integer")
+    if max_workers < 1:
+        raise ValueError("FSFC_MAX_AUTO_WORKERS must be >= 1")
+    return max_workers
+
+
+def resolve_pool_chunksize(total_chunks: int, workers: int) -> int:
+    """Resolve multiprocessing imap chunksize for batched image work."""
+    raw = os.getenv("FSFC_POOL_CHUNKSIZE")
+    if raw:
+        try:
+            chunksize = int(raw)
+        except ValueError:
+            raise ValueError("FSFC_POOL_CHUNKSIZE must be an integer")
+        if chunksize < 1:
+            raise ValueError("FSFC_POOL_CHUNKSIZE must be >= 1")
+        return chunksize
+
+    if total_chunks <= 0 or workers <= 1:
+        return 1
+
+    # Keep enough tasks in flight for load balancing, but avoid paying an IPC
+    # round trip for every small batch on large datasets.
+    return max(1, min(8, math.ceil(total_chunks / (workers * 8))))
 
 
 def resolve_face_batch_size() -> int:
@@ -173,11 +230,7 @@ def _get_cgroup_available_memory() -> Optional[int]:
 
 def _configure_cpu_worker_threads() -> None:
     """Avoid multiplying PyTorch/OpenMP threads inside each worker process."""
-    raw = os.getenv("FSFC_TORCH_THREADS", "1")
-    try:
-        threads = max(1, int(raw))
-    except ValueError:
-        raise ValueError("FSFC_TORCH_THREADS must be an integer")
+    threads = resolve_torch_threads()
 
     torch.set_num_threads(threads)
     try:
@@ -353,7 +406,11 @@ def embed_paths(
         ]
     else:
         with Pool(workers, initializer=_init_embed_worker, initargs=(device,)) as p:
-            results = list(tqdm(p.imap(_embed_batch_worker, chunks), total=len(chunks), desc="Processing"))
+            results = list(tqdm(
+                p.imap(_embed_batch_worker, chunks, chunksize=resolve_pool_chunksize(len(chunks), workers)),
+                total=len(chunks),
+                desc="Processing",
+            ))
     
     return [x for y in results for x in y[0]], [x for y in results for x in y[1]]
 

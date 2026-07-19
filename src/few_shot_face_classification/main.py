@@ -21,6 +21,7 @@ from few_shot_face_classification.embed import (
     get_networks,
     resolve_device,
     resolve_num_workers,
+    resolve_pool_chunksize,
     validate_face,
 )
 from few_shot_face_classification.exceptions import InvalidImageException
@@ -218,7 +219,11 @@ def detect_and_export(
             device,
         )
         with Pool(workers, initializer=_init_export_worker, initargs=initializer_args) as p:
-            list(tqdm(p.imap(_embed_and_export_worker, chunks), total=len(chunks), desc="Exporting"))
+            list(tqdm(
+                p.imap(_embed_and_export_worker, chunks, chunksize=resolve_pool_chunksize(len(chunks), workers)),
+                total=len(chunks),
+                desc="Exporting",
+            ))
 
 
 def _init_export_worker(
