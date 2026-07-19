@@ -6,13 +6,127 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import urllib.error
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Optional, Union
+
+
+FACENET_WHEEL_URL = (
+    "http://166.111.17.106:23333/interchange%20station/20900012/"
+    "facenet_pytorch-3.0.0-py3-none-any.whl"
+)
+FACENET_ARTIFACT_URL = (
+    "https://api.github.com/repos/SphenHe/facenet-pytorch/actions/"
+    "artifacts/8441941129/zip"
+)
+FACENET_SOURCE_URL = (
+    "git+https://github.com/SphenHe/facenet-pytorch.git@"
+    "f26ffeb58782e86cf872664b4a01baa7ce110d77"
+)
+FACENET_WHEEL_NAME = "facenet_pytorch-3.0.0-py3-none-any.whl"
 
 
 def _run(cmd):
     print(">>", shlex.join(cmd))
     subprocess.check_call(cmd)
+
+
+def _download(url: str, destination: Path, token: Optional[str] = None) -> None:
+    """Download a URL atomically, leaving no partial destination on failure."""
+    headers = {"User-Agent": "few-shot-face-classification-setup"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+        headers["Accept"] = "application/vnd.github+json"
+    request = urllib.request.Request(url, headers=headers)
+    partial = destination.with_name(f".{destination.name}.part")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response, partial.open("wb") as output:
+            shutil.copyfileobj(response, output)
+        partial.replace(destination)
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
+
+
+def _github_artifact_wheel(download_dir: Path) -> Path:
+    """Download and extract the pinned GitHub Actions wheel artifact."""
+    archive = download_dir / "facenet-pytorch-wheel.zip"
+    token = os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")
+    if shutil.which("gh"):
+        _run(
+            [
+                "gh",
+                "run",
+                "download",
+                "29685412234",
+                "--repo",
+                "SphenHe/facenet-pytorch",
+                "--name",
+                "facenet-pytorch-wheel",
+                "--dir",
+                str(download_dir),
+            ]
+        )
+    else:
+        if not token:
+            raise RuntimeError("GitHub artifact download requires gh login, GH_TOKEN, or GITHUB_TOKEN")
+        _download(FACENET_ARTIFACT_URL, archive, token=token)
+        with zipfile.ZipFile(archive) as artifact:
+            member = next(
+                (item for item in artifact.infolist() if Path(item.filename).name == FACENET_WHEEL_NAME),
+                None,
+            )
+            if member is None:
+                raise RuntimeError(f"{FACENET_WHEEL_NAME} was not found in the GitHub artifact")
+            wheel = download_dir / FACENET_WHEEL_NAME
+            with artifact.open(member) as source, wheel.open("wb") as destination:
+                shutil.copyfileobj(source, destination)
+
+    wheel = download_dir / FACENET_WHEEL_NAME
+    if not wheel.is_file():
+        raise RuntimeError(f"GitHub artifact did not produce {FACENET_WHEEL_NAME}")
+    _validate_wheel(wheel)
+    return wheel
+
+
+def _validate_wheel(wheel: Path) -> None:
+    """Reject truncated files and error pages before handing a wheel to pip."""
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            if archive.testzip() is not None:
+                raise RuntimeError(f"Corrupt wheel downloaded: {wheel}")
+            if not any(name.endswith(".dist-info/METADATA") for name in archive.namelist()):
+                raise RuntimeError(f"Downloaded file is not a Python wheel: {wheel}")
+    except zipfile.BadZipFile as error:
+        raise RuntimeError(f"Downloaded file is not a valid wheel: {wheel}") from error
+
+
+def _resolve_facenet_install(local_wheel: Optional[Path], download_dir: Path) -> Union[Path, str]:
+    """Resolve facenet install source: local/internal, Actions artifact, then source."""
+    if local_wheel:
+        return local_wheel
+
+    wheel = download_dir / FACENET_WHEEL_NAME
+    print(f"Downloading facenet-pytorch wheel from preferred mirror: {FACENET_WHEEL_URL}")
+    try:
+        _download(FACENET_WHEEL_URL, wheel)
+        _validate_wheel(wheel)
+        return wheel
+    except Exception as error:
+        print(f"Preferred wheel mirror failed: {error}", file=sys.stderr)
+
+    print("Trying GitHub Actions artifact facenet-pytorch-wheel...")
+    try:
+        return _github_artifact_wheel(download_dir)
+    except Exception as error:
+        print(f"GitHub Actions artifact failed: {error}", file=sys.stderr)
+
+    print("Falling back to building facenet-pytorch from the pinned GitHub source.")
+    return FACENET_SOURCE_URL
 
 
 def _is_conda_env(conda: str, env_name: str) -> bool:
@@ -30,7 +144,7 @@ def _install_with_python(
     repo_root: Path,
     upgrade: bool,
     extra_index_url: Optional[str],
-    facenet_wheel: Optional[Path],
+    facenet_install: Union[Path, str],
 ) -> None:
     install_cmd = [str(python), "-m", "pip", "install"]
     if upgrade:
@@ -39,8 +153,7 @@ def _install_with_python(
         install_cmd += ["--extra-index-url", extra_index_url]
 
     _run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
-    if facenet_wheel:
-        _run([*install_cmd, str(facenet_wheel)])
+    _run([*install_cmd, str(facenet_install)])
     _run([*install_cmd, "-e", str(repo_root)])
 
 
@@ -49,7 +162,7 @@ def _setup_conda(
     repo_root: Path,
     upgrade: bool,
     extra_index_url: Optional[str],
-    facenet_wheel: Optional[Path],
+    facenet_install: Union[Path, str],
 ) -> None:
     conda = shutil.which("conda")
     if conda is None:
@@ -69,8 +182,7 @@ def _setup_conda(
         install_cmd.append("--upgrade")
     if extra_index_url:
         install_cmd += ["--extra-index-url", extra_index_url]
-    if facenet_wheel:
-        _run([*install_cmd, str(facenet_wheel)])
+    _run([*install_cmd, str(facenet_install)])
     _run([*install_cmd, "-e", str(repo_root)])
 
 
@@ -130,38 +242,48 @@ def main() -> None:
         facenet_wheel = facenet_wheel.expanduser().resolve()
         if not facenet_wheel.is_file() or facenet_wheel.suffix != ".whl":
             sys.exit(f"facenet wheel not found or not a .whl file: {facenet_wheel}")
+        try:
+            _validate_wheel(facenet_wheel)
+        except RuntimeError as error:
+            sys.exit(str(error))
 
     if env_manager == "auto":
         env_manager = "conda" if shutil.which("conda") else "venv"
 
-    if env_manager == "conda":
-        _setup_conda(
-            args.conda_env,
-            repo_root,
-            args.upgrade,
-            args.extra_index_url,
-            facenet_wheel,
-        )
-        print("Environment ready.")
-        print(f"Activate it with: conda activate {args.conda_env}")
-        return
+    try:
+        with tempfile.TemporaryDirectory(prefix="facenet-pytorch-") as temporary:
+            facenet_install = _resolve_facenet_install(facenet_wheel, Path(temporary))
 
-    if sys.version_info < (3, 9) or sys.version_info >= (3, 15):
-        sys.exit("Python >=3.9 and <3.15 is required for venv/current installs.")
+            if env_manager == "conda":
+                _setup_conda(
+                    args.conda_env,
+                    repo_root,
+                    args.upgrade,
+                    args.extra_index_url,
+                    facenet_install,
+                )
+                print("Environment ready.")
+                print(f"Activate it with: conda activate {args.conda_env}")
+                return
 
-    python = Path(sys.executable)
-    if env_manager == "venv":
-        if not args.venv.exists():
-            _run([str(python), "-m", "venv", str(args.venv)])
-        python = _venv_python(args.venv)
+            if sys.version_info < (3, 9) or sys.version_info >= (3, 15):
+                sys.exit("Python >=3.9 and <3.15 is required for venv/current installs.")
 
-    _install_with_python(
-        python,
-        repo_root,
-        args.upgrade,
-        args.extra_index_url,
-        facenet_wheel,
-    )
+            python = Path(sys.executable)
+            if env_manager == "venv":
+                if not args.venv.exists():
+                    _run([str(python), "-m", "venv", str(args.venv)])
+                python = _venv_python(args.venv)
+
+            _install_with_python(
+                python,
+                repo_root,
+                args.upgrade,
+                args.extra_index_url,
+                facenet_install,
+            )
+    except (OSError, RuntimeError, subprocess.CalledProcessError, urllib.error.URLError) as error:
+        sys.exit(f"Environment setup failed: {error}")
 
     print("Environment ready.")
     if env_manager == "venv":

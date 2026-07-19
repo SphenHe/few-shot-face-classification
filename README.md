@@ -4,14 +4,21 @@
 
 ## 环境配置
 
-先从 [GitHub Actions 构建记录](https://github.com/SphenHe/facenet-pytorch/actions/runs/29685412234)
-下载 `facenet-pytorch-wheel` artifact，并解压得到
-`facenet_pytorch-3.0.0-py3-none-any.whl`。然后把 wheel 路径交给配置脚本；脚本会直接安装
-wheel，不会重新构建 `facenet-pytorch`：
+直接运行配置脚本：
 
 ```bash
-python3 setup_env.py \
-  --facenet-wheel /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
+python3 setup_env.py
+```
+
+脚本会优先从内网镜像下载 `facenet_pytorch-3.0.0-py3-none-any.whl`。镜像不可用时，会尝试从
+[GitHub Actions 构建记录](https://github.com/SphenHe/facenet-pytorch/actions/runs/29685412234)
+下载 `facenet-pytorch-wheel` artifact；该步骤需要已登录的 `gh`，或环境变量
+`GH_TOKEN`/`GITHUB_TOKEN`。artifact 仍不可用时，才从固定的 GitHub commit 构建。
+
+已有本地 wheel 时可跳过上述 wheel 下载顺序：
+
+```bash
+python3 setup_env.py --facenet-wheel /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
 ```
 
 如果使用 Conda，环境创建后激活：
@@ -32,8 +39,7 @@ python -m pip install -e .
 强制使用 Python venv：
 
 ```bash
-python3 setup_env.py --env-manager venv \
-  --facenet-wheel /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
+python3 setup_env.py --env-manager venv
 source .venv/bin/activate
 ```
 
