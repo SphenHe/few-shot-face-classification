@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Iterable, Optional, Sequence, Union
 
 
 FACENET_WHEEL_URL = (
@@ -41,6 +41,84 @@ def _run_output(cmd: Sequence[str]) -> Optional[str]:
     if result.returncode != 0:
         return None
     return result.stdout.strip()
+
+
+def _existing_file(path: Union[Path, str]) -> Optional[str]:
+    candidate = Path(path).expanduser()
+    if candidate.is_file():
+        return str(candidate)
+    return None
+
+
+def _dedupe(paths: Iterable[Union[Path, str, None]]) -> list[str]:
+    seen = set()
+    deduped = []
+    for path in paths:
+        if not path:
+            continue
+        value = str(path)
+        key = os.path.normcase(os.path.abspath(os.path.expanduser(value)))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(value)
+    return deduped
+
+
+def _conda_base_candidates() -> list[Path]:
+    candidates = []
+    conda_prefix = os.getenv("CONDA_PREFIX")
+    if conda_prefix:
+        prefix = Path(conda_prefix)
+        if prefix.parent.name.lower() == "envs":
+            candidates.append(prefix.parent.parent)
+        candidates.append(prefix)
+
+    conda_exe = os.getenv("CONDA_EXE")
+    if conda_exe:
+        exe_path = Path(conda_exe)
+        if exe_path.parent.name.lower() in {"scripts", "condabin"}:
+            candidates.append(exe_path.parent.parent)
+
+    if os.name == "nt":
+        candidates += [
+            Path.home() / "miniconda3",
+            Path.home() / "anaconda3",
+            Path.home() / "miniforge3",
+            Path.home() / "mambaforge",
+        ]
+
+    return [Path(path) for path in _dedupe(candidates)]
+
+
+def _find_conda_executable(explicit: Optional[Path] = None) -> Optional[str]:
+    """Find a usable Conda entry point without assuming one Windows layout."""
+    candidates: list[Union[Path, str, None]] = [
+        explicit,
+        os.getenv("CONDA_EXE"),
+        shutil.which("conda"),
+        shutil.which("conda.exe"),
+        shutil.which("conda.bat"),
+    ]
+
+    for base in _conda_base_candidates():
+        if os.name == "nt":
+            candidates += [
+                base / "condabin" / "conda.bat",
+                base / "Scripts" / "conda.exe",
+                base / "Scripts" / "conda.bat",
+            ]
+        else:
+            candidates += [
+                base / "bin" / "conda",
+                base / "condabin" / "conda",
+            ]
+
+    for candidate in _dedupe(candidates):
+        existing = _existing_file(candidate)
+        if existing:
+            return existing
+    return None
 
 
 def _download(url: str, destination: Path, token: Optional[str] = None) -> None:
@@ -216,10 +294,14 @@ def _setup_conda(
     upgrade: bool,
     extra_index_url: Optional[str],
     facenet_install: Union[Path, str],
+    conda_executable: Optional[Path],
 ) -> None:
-    conda = shutil.which("conda")
+    conda = _find_conda_executable(conda_executable)
     if conda is None:
-        sys.exit("conda was not found. Install Conda or run: python3 setup_env.py --env-manager venv")
+        sys.exit(
+            "conda was not found. Install Conda, pass --conda-executable, "
+            "or run: python3 setup_env.py --env-manager venv"
+        )
 
     env_file = repo_root / "environment.yml"
     if not _is_conda_env(conda, env_name):
@@ -267,6 +349,12 @@ def main() -> None:
         help="Conda environment name.",
     )
     parser.add_argument(
+        "--conda-executable",
+        type=Path,
+        default=None,
+        help="Path to conda, useful when PATH points at a broken Windows Conda entry.",
+    )
+    parser.add_argument(
         "--venv",
         type=Path,
         default=Path(".venv"),
@@ -302,8 +390,13 @@ def main() -> None:
         except RuntimeError as error:
             sys.exit(str(error))
 
+    if args.conda_executable:
+        args.conda_executable = args.conda_executable.expanduser()
+        if not args.conda_executable.is_file():
+            sys.exit(f"conda executable not found: {args.conda_executable}")
+
     if env_manager == "auto":
-        env_manager = "conda" if shutil.which("conda") else "venv"
+        env_manager = "conda" if _find_conda_executable(args.conda_executable) else "venv"
 
     try:
         with tempfile.TemporaryDirectory(prefix="facenet-pytorch-") as temporary:
@@ -316,6 +409,7 @@ def main() -> None:
                     args.upgrade,
                     args.extra_index_url,
                     facenet_install,
+                    args.conda_executable,
                 )
                 print("Environment ready.")
                 print(f"Activate it with: conda activate {args.conda_env}")
