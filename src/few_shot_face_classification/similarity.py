@@ -26,21 +26,21 @@ def get_classes(
     """
     if not embs:
         return []
+    if not labeled_embs:
+        return [None] * len(embs)
 
     # Get all classes that belong to the labeled embeddings
     labeled_classes = [get_class(p) for p in labeled_paths]
     
     # Calculate the distance between embeddings
-    dist = euclidean_distances(embs, labeled_embs)
+    dist = euclidean_distances(np.asarray(embs), np.asarray(labeled_embs))
     
     # Derive the best suiting class
     classes = []
-    for d in dist:
-        classes.append(
-                labeled_classes[np.where(d == min(d))[0][0]]
-                if min(d) <= thr
-                else None
-        )
+    best_indices = dist.argmin(axis=1)
+    best_distances = dist[np.arange(dist.shape[0]), best_indices]
+    for best_index, best_distance in zip(best_indices, best_distances):
+        classes.append(labeled_classes[best_index] if best_distance <= thr else None)
     return classes
 
 

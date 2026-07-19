@@ -69,13 +69,27 @@ def resolve_num_workers(num_workers: Optional[int] = None) -> int:
         return num_workers
 
     available_cpus = _available_cpu_count()
-    # Model-heavy workers consume substantial memory and shared CPU resources.
-    # Grow slower than the logical CPU count instead of filling every core.
-    cpu_workers = max(1, math.ceil(math.sqrt(available_cpus)))
+    # Each worker owns a model copy. Past a small number of workers, CPU face
+    # detection and embedding usually become memory-bandwidth bound and slow
+    # down from process scheduling/model duplication. Keep the automatic choice
+    # conservative; FSFC_NUM_WORKERS can still override it for benchmarking.
+    cpu_workers = min(3, max(1, math.ceil(available_cpus / 4)))
     memory_workers = _estimate_memory_limited_workers()
     if memory_workers is not None:
         cpu_workers = min(cpu_workers, memory_workers)
     return max(1, cpu_workers)
+
+
+def resolve_face_batch_size() -> int:
+    """Resolve how many cropped faces to embed in one network forward pass."""
+    raw = os.getenv("FSFC_FACE_BATCH_SIZE", "64")
+    try:
+        batch_size = int(raw)
+    except ValueError:
+        raise ValueError("FSFC_FACE_BATCH_SIZE must be an integer")
+    if batch_size < 1:
+        raise ValueError("FSFC_FACE_BATCH_SIZE must be >= 1")
+    return batch_size
 
 
 def _available_cpu_count() -> int:
@@ -264,14 +278,30 @@ def embed_with_boxes(
     if img_cropped.ndim == 3:
         img_cropped = img_cropped.unsqueeze(0)
 
-    # Embed all detected faces
-    embeddings = []
-    with torch.no_grad():
-        for face_arr in img_cropped:
-            embeddings.append(
-                    vggface2(face_arr.unsqueeze(0).to(resolved_device)).detach().cpu().numpy()[0]
-            )
+    embeddings = _embed_face_tensor_batch(img_cropped, vggface2, resolved_device)
     return embeddings, [np.asarray(box) for box in boxes[:len(embeddings)]]
+
+
+def _embed_face_tensor_batch(
+        faces: torch.Tensor,
+        vggface2: InceptionResnetV1,
+        device: torch.device,
+        face_batch_size: Optional[int] = None,
+) -> List[np.ndarray]:
+    """Embed cropped face tensors in model-sized batches."""
+    if faces.numel() == 0:
+        return []
+    if faces.ndim == 3:
+        faces = faces.unsqueeze(0)
+
+    face_batch_size = face_batch_size or resolve_face_batch_size()
+    outputs: List[np.ndarray] = []
+    with torch.no_grad():
+        for i in range(0, faces.shape[0], face_batch_size):
+            batch = faces[i:i + face_batch_size].to(device)
+            embedded = vggface2(batch).detach().cpu().numpy()
+            outputs.extend(embedded)
+    return outputs
 
 
 def embed_folder(
@@ -335,23 +365,13 @@ def embed_batch(
         vggface2: Optional[InceptionResnetV1] = None,
 ) -> Tuple[List[Path], List[np.ndarray]]:
     """Embed a batch of images as specified by their path, used in multiprocessing."""
-    # Load in the networks
-    if mtcnn is None or vggface2 is None:
-        mtcnn, vggface2 = get_networks(device=device)
-    
-    # Embed all the images
-    return_path, return_arr = [], []
-    for path in paths:
-        im = load_single(path)
-        emb = embed(
-                im=im,
-                mtcnn=mtcnn,
-                vggface2=vggface2,
-                device=device,
-        )
-        return_path += [path] * len(emb)
-        return_arr += emb
-    return return_path, return_arr
+    return_paths, return_embeddings, _ = embed_batch_with_boxes(
+        paths,
+        device=device,
+        mtcnn=mtcnn,
+        vggface2=vggface2,
+    )
+    return return_paths, return_embeddings
 
 
 def embed_batch_with_boxes(
@@ -364,18 +384,39 @@ def embed_batch_with_boxes(
     if mtcnn is None or vggface2 is None:
         mtcnn, vggface2 = get_networks(device=device)
 
-    return_paths, return_embeddings, return_boxes = [], [], []
+    resolved_device = _network_device(vggface2)
+    face_batch_size = resolve_face_batch_size()
+    return_paths, return_boxes = [], []
+    cropped_faces: List[torch.Tensor] = []
     for path in paths:
         im = load_single(path)
-        embeddings, boxes = embed_with_boxes(
-            im,
-            mtcnn=mtcnn,
-            vggface2=vggface2,
-            device=device,
-        )
-        return_paths += [path] * len(embeddings)
-        return_embeddings += embeddings
-        return_boxes += boxes
+        boxes, _ = mtcnn.detect(im)
+        if boxes is None or len(boxes) == 0:
+            continue
+
+        img_cropped = mtcnn.extract(im, boxes, save_path=None)
+        if img_cropped is None:
+            continue
+        if img_cropped.ndim == 3:
+            img_cropped = img_cropped.unsqueeze(0)
+
+        face_count = min(len(boxes), img_cropped.shape[0])
+        if face_count == 0:
+            continue
+        cropped_faces.append(img_cropped[:face_count])
+        return_paths += [path] * face_count
+        return_boxes += [np.asarray(box) for box in boxes[:face_count]]
+
+    if not cropped_faces:
+        return [], [], []
+
+    faces = torch.cat(cropped_faces, dim=0)
+    return_embeddings = _embed_face_tensor_batch(
+        faces,
+        vggface2,
+        resolved_device,
+        face_batch_size=face_batch_size,
+    )
     return return_paths, return_embeddings, return_boxes
 
 
