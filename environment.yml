@@ -2,7 +2,7 @@ name: few-shot-face-classification
 channels:
   - conda-forge
 dependencies:
-  - python=3.12
+  - "python>=3.8,<=3.14"
   - pip
   - pip:
       - -e .

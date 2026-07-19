@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,12 +7,12 @@ name = "few-shot-face-classification"
 version = "0.0.1"
 description = "Library to recognise and classify faces."
 readme = "README.md"
-requires-python = ">=3.8,<3.13"
+requires-python = ">=3.8,<=3.14"
 authors = [
     { name = "RubenPants", email = "broekxruben@gmail.com" },
 ]
 dependencies = [
-    "facenet-pytorch>=2.5.2,<2.7",
+    "facenet-pytorch",
     "Pillow",
     "matplotlib",
     "scikit-learn",
