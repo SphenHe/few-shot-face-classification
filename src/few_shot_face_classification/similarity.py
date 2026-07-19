@@ -211,12 +211,17 @@ def _draw_faces_on_image(
     # Draw boxes and text
     for box, name in zip(boxes, names):
         x1, y1, x2, y2 = [int(v) for v in box]
+
+        # Unknown faces use red boxes and labels; recognised faces keep the
+        # configured colours.
+        text = str(name) if name else "Unknown"
+        is_unknown = text.strip().lower() == "unknown"
+        current_box_color = (255, 0, 0) if is_unknown else box_color_rgb
+        current_text_color = (255, 0, 0) if is_unknown else text_color_rgb
+        current_text_bg_color = (255, 255, 255) if is_unknown else text_bg_color_rgb
         
         # Draw bounding box
-        draw.rectangle([x1, y1, x2, y2], outline=box_color_rgb, width=2)
-        
-        # Prepare text
-        text = str(name) if name else "Unknown"
+        draw.rectangle([x1, y1, x2, y2], outline=current_box_color, width=2)
         
         # Get text bounding box for PIL
         try:
@@ -234,7 +239,7 @@ def _draw_faces_on_image(
         # Draw text background
         draw.rectangle(
             [text_x, text_y, text_x + text_width + 10, text_y + text_height + 10],
-            fill=text_bg_color_rgb
+            fill=current_text_bg_color
         )
         
         # Draw text
@@ -242,7 +247,7 @@ def _draw_faces_on_image(
             (text_x + 5, text_y + 5),
             text,
             font=font,
-            fill=text_color_rgb
+            fill=current_text_color
         )
     
     return result

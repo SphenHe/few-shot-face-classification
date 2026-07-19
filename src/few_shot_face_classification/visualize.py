@@ -97,7 +97,8 @@ def visualize_faces_with_boxes(
     
     # 在检测到的人脸上绘制框框和标签
     for i, (box, name) in enumerate(zip(batch_boxes, classes)):
-        if name is None or (names_to_highlight and name not in names_to_highlight):
+        is_unknown = name is None or (names_to_highlight and name not in names_to_highlight)
+        if is_unknown:
             color = 'red'  # 未识别或非目标人物用红色
             label = f"Unknown #{i+1}"
         else:
@@ -119,8 +120,13 @@ def visualize_faces_with_boxes(
             x1, y1 - 5,
             label,
             fontsize=12,
-            color='black',
-            bbox=dict(boxstyle='round', facecolor=color, alpha=0.8),
+            color='red' if is_unknown else 'black',
+            bbox=dict(
+                boxstyle='round',
+                facecolor='white' if is_unknown else color,
+                edgecolor=color,
+                alpha=0.8,
+            ),
             ha='left'
         )
     
