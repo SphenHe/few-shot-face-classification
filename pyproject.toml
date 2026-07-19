@@ -7,12 +7,12 @@ name = "few-shot-face-classification"
 version = "0.0.1"
 description = "Library to recognise and classify faces."
 readme = "README.md"
-requires-python = ">=3.8,<3.15"
+requires-python = ">=3.9,<3.15"
 authors = [
     { name = "RubenPants", email = "broekxruben@gmail.com" },
 ]
 dependencies = [
-    "facenet-pytorch",
+    "facenet-pytorch @ git+https://github.com/SphenHe/facenet-pytorch.git@f26ffeb58782e86cf872664b4a01baa7ce110d77",
     "Pillow",
     "matplotlib",
     "scikit-learn",

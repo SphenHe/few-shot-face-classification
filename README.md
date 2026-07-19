@@ -42,7 +42,9 @@ Windows PowerShell 激活 venv：
 python -m pip install -e .
 ```
 
-依赖环境需要 Python 3.8 到 3.12。Python 3.13 不推荐，当前人脸识别依赖栈可能触发源码编译失败。
+依赖环境需要 Python 3.9 到 3.14。项目固定使用自维护的
+[`facenet-pytorch` 3.0.0](https://github.com/SphenHe/facenet-pytorch)，支持 NumPy 2.x
+及较新的 PyTorch/Python 版本。
 
 验证安装：
 

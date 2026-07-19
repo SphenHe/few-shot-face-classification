@@ -123,8 +123,8 @@ def main() -> None:
         print(f"Activate it with: conda activate {args.conda_env}")
         return
 
-    if sys.version_info < (3, 8) or sys.version_info >= (3, 15):
-        sys.exit("Python >=3.8 and <3.15 is required for venv/current installs.")
+    if sys.version_info < (3, 9) or sys.version_info >= (3, 15):
+        sys.exit("Python >=3.9 and <3.15 is required for venv/current installs.")
 
     python = Path(sys.executable)
     if env_manager == "venv":
