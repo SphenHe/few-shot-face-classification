@@ -125,6 +125,18 @@ python run_classification.py
 
 结果会写入 `data/results/`，每个识别到的人物一个子目录。
 
+统计照片上的人数：
+
+```bash
+python count_people.py data/raw
+```
+
+也可以统计单张照片，并可导出 CSV：
+
+```bash
+python count_people.py data/raw/group1.jpeg --csv data/people_count.csv
+```
+
 摄像头测试：
 
 ```bash
@@ -237,6 +249,19 @@ build_embeddings_cache(
     cache_file=Path("data/embeddings_cache.pkl"),
     device="cuda",  # 没有 CUDA 环境时使用 "cpu"，或使用 "auto" 自动选择
 )
+```
+
+统计单张或整个文件夹照片中的人数：
+
+```python
+from pathlib import Path
+from few_shot_face_classification import count_people, count_people_in_folder
+
+print(count_people(Path("data/raw/group1.jpeg")))
+
+counts = count_people_in_folder(Path("data/raw"))
+for path, people_count in counts.items():
+    print(path, people_count)
 ```
 
 cache 会按标注图片文件清单、修改时间和文件大小判断是否可复用。删除图片时只在内存中过滤，不会改写 cache；新增或修改图片时只补算对应图片的 embedding，并保留未变化图片的已有 cache。
