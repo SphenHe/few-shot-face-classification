@@ -124,7 +124,7 @@ def main() -> None:
         return
 
     if sys.version_info < (3, 8) or sys.version_info >= (3, 15):
-        sys.exit("Python 3.8 to 3.14 is required for venv/current installs.")
+        sys.exit("Python >=3.8 and <3.15 is required for venv/current installs.")
 
     python = Path(sys.executable)
     if env_manager == "venv":
