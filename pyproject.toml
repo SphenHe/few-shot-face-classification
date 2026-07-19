@@ -12,7 +12,7 @@ authors = [
     { name = "RubenPants", email = "broekxruben@gmail.com" },
 ]
 dependencies = [
-    "facenet-pytorch @ git+https://github.com/SphenHe/facenet-pytorch.git@f26ffeb58782e86cf872664b4a01baa7ce110d77",
+    "facenet-pytorch==3.0.0",
     "Pillow",
     "matplotlib",
     "scikit-learn",

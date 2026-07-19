@@ -30,6 +30,7 @@ def _install_with_python(
     repo_root: Path,
     upgrade: bool,
     extra_index_url: Optional[str],
+    facenet_wheel: Optional[Path],
 ) -> None:
     install_cmd = [str(python), "-m", "pip", "install"]
     if upgrade:
@@ -38,6 +39,8 @@ def _install_with_python(
         install_cmd += ["--extra-index-url", extra_index_url]
 
     _run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
+    if facenet_wheel:
+        _run([*install_cmd, str(facenet_wheel)])
     _run([*install_cmd, "-e", str(repo_root)])
 
 
@@ -46,6 +49,7 @@ def _setup_conda(
     repo_root: Path,
     upgrade: bool,
     extra_index_url: Optional[str],
+    facenet_wheel: Optional[Path],
 ) -> None:
     conda = shutil.which("conda")
     if conda is None:
@@ -60,12 +64,14 @@ def _setup_conda(
     pip_cmd = [conda, "run", "-n", env_name, "python", "-m", "pip"]
     _run([*pip_cmd, "install", "--upgrade", "pip"])
 
-    install_cmd = [*pip_cmd, "install", "-e", str(repo_root)]
+    install_cmd = [*pip_cmd, "install"]
     if upgrade:
         install_cmd.append("--upgrade")
     if extra_index_url:
         install_cmd += ["--extra-index-url", extra_index_url]
-    _run(install_cmd)
+    if facenet_wheel:
+        _run([*install_cmd, str(facenet_wheel)])
+    _run([*install_cmd, "-e", str(repo_root)])
 
 
 def _venv_python(venv_dir: Path) -> Path:
@@ -109,16 +115,33 @@ def main() -> None:
         action="store_true",
         help="Upgrade dependencies while installing.",
     )
+    parser.add_argument(
+        "--facenet-wheel",
+        type=Path,
+        default=None,
+        help="Install the prebuilt facenet-pytorch 3.0.0 wheel before this project.",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent
     env_manager = args.env_manager
+    facenet_wheel = args.facenet_wheel
+    if facenet_wheel:
+        facenet_wheel = facenet_wheel.expanduser().resolve()
+        if not facenet_wheel.is_file() or facenet_wheel.suffix != ".whl":
+            sys.exit(f"facenet wheel not found or not a .whl file: {facenet_wheel}")
 
     if env_manager == "auto":
         env_manager = "conda" if shutil.which("conda") else "venv"
 
     if env_manager == "conda":
-        _setup_conda(args.conda_env, repo_root, args.upgrade, args.extra_index_url)
+        _setup_conda(
+            args.conda_env,
+            repo_root,
+            args.upgrade,
+            args.extra_index_url,
+            facenet_wheel,
+        )
         print("Environment ready.")
         print(f"Activate it with: conda activate {args.conda_env}")
         return
@@ -132,7 +155,13 @@ def main() -> None:
             _run([str(python), "-m", "venv", str(args.venv)])
         python = _venv_python(args.venv)
 
-    _install_with_python(python, repo_root, args.upgrade, args.extra_index_url)
+    _install_with_python(
+        python,
+        repo_root,
+        args.upgrade,
+        args.extra_index_url,
+        facenet_wheel,
+    )
 
     print("Environment ready.")
     if env_manager == "venv":

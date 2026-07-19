@@ -4,10 +4,14 @@
 
 ## 环境配置
 
-推荐一键配置，脚本会优先使用 Conda；如果当前环境没有 `conda`，才会使用 Python venv。
+先从 [GitHub Actions 构建记录](https://github.com/SphenHe/facenet-pytorch/actions/runs/29685412234)
+下载 `facenet-pytorch-wheel` artifact，并解压得到
+`facenet_pytorch-3.0.0-py3-none-any.whl`。然后把 wheel 路径交给配置脚本；脚本会直接安装
+wheel，不会重新构建 `facenet-pytorch`：
 
 ```bash
-python3 setup_env.py
+python3 setup_env.py \
+  --facenet-wheel /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
 ```
 
 如果使用 Conda，环境创建后激活：
@@ -16,17 +20,20 @@ python3 setup_env.py
 conda activate few-shot-face-classification
 ```
 
-也可以直接使用 Conda 配置文件：
+也可以先用 Conda 配置文件创建基础环境，再安装 wheel 和本项目：
 
 ```bash
 conda env create -f environment.yml
 conda activate few-shot-face-classification
+python -m pip install /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
+python -m pip install -e .
 ```
 
 强制使用 Python venv：
 
 ```bash
-python3 setup_env.py --env-manager venv
+python3 setup_env.py --env-manager venv \
+  --facenet-wheel /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
 source .venv/bin/activate
 ```
 
@@ -36,9 +43,10 @@ Windows PowerShell 激活 venv：
 .\.venv\Scripts\Activate.ps1
 ```
 
-已有环境时直接安装：
+已有环境时先安装 wheel，再安装本项目：
 
 ```bash
+python -m pip install /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
 python -m pip install -e .
 ```
 
