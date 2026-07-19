@@ -10,6 +10,11 @@
 python3 setup_env.py
 ```
 
+脚本会在安装 `facenet-pytorch` 前先安装 PyTorch。Linux/Windows 默认使用
+PyTorch CPU 专用索引，因此会按当前 Python 版本自动选择兼容的 CPU 版
+`torch`/`torchvision`，不会下载 CUDA 运行时依赖。macOS 没有 CUDA 构建，脚本使用默认
+PyPI 索引安装兼容版本。
+
 脚本会优先从内网镜像下载 `facenet_pytorch-3.0.0-py3-none-any.whl`。镜像不可用时，会尝试从
 [GitHub Actions 构建记录](https://github.com/SphenHe/facenet-pytorch/actions/runs/29685412234)
 下载 `facenet-pytorch-wheel` artifact；该步骤需要已登录的 `gh`，或环境变量
@@ -27,11 +32,22 @@ python3 setup_env.py --facenet-wheel /path/to/facenet_pytorch-3.0.0-py3-none-any
 conda activate few-shot-face-classification
 ```
 
-也可以先用 Conda 配置文件创建基础环境，再安装 wheel 和本项目：
+也可以先用 Conda 配置文件创建基础环境，再安装 CPU PyTorch、wheel 和本项目。Linux/Windows：
 
 ```bash
 conda env create -f environment.yml
 conda activate few-shot-face-classification
+python -m pip install "torch>=2.4,<2.10" "torchvision>=0.19,<0.25" --index-url https://download.pytorch.org/whl/cpu
+python -m pip install /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
+python -m pip install -e .
+```
+
+macOS：
+
+```bash
+conda env create -f environment.yml
+conda activate few-shot-face-classification
+python -m pip install "torch>=2.4,<2.10" "torchvision>=0.19,<0.25"
 python -m pip install /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
 python -m pip install -e .
 ```
@@ -49,9 +65,18 @@ Windows PowerShell 激活 venv：
 .\.venv\Scripts\Activate.ps1
 ```
 
-已有环境时先安装 wheel，再安装本项目：
+已有环境时先安装 CPU PyTorch，再安装 wheel 和本项目。Linux/Windows：
 
 ```bash
+python -m pip install "torch>=2.4,<2.10" "torchvision>=0.19,<0.25" --index-url https://download.pytorch.org/whl/cpu
+python -m pip install /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
+python -m pip install -e .
+```
+
+macOS：
+
+```bash
+python -m pip install "torch>=2.4,<2.10" "torchvision>=0.19,<0.25"
 python -m pip install /path/to/facenet_pytorch-3.0.0-py3-none-any.whl
 python -m pip install -e .
 ```

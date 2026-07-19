@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 
 
 FACENET_WHEEL_URL = (
@@ -27,11 +27,20 @@ FACENET_SOURCE_URL = (
     "f26ffeb58782e86cf872664b4a01baa7ce110d77"
 )
 FACENET_WHEEL_NAME = "facenet_pytorch-3.0.0-py3-none-any.whl"
+PYTORCH_CPU_INDEX_URL = "https://download.pytorch.org/whl/cpu"
+PYTORCH_REQUIREMENTS = ("torch>=2.4,<2.10", "torchvision>=0.19,<0.25")
 
 
 def _run(cmd):
     print(">>", shlex.join(cmd))
     subprocess.check_call(cmd)
+
+
+def _run_output(cmd: Sequence[str]) -> Optional[str]:
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
 
 
 def _download(url: str, destination: Path, token: Optional[str] = None) -> None:
@@ -146,15 +155,59 @@ def _install_with_python(
     extra_index_url: Optional[str],
     facenet_install: Union[Path, str],
 ) -> None:
+    pip_cmd = [str(python), "-m", "pip"]
+    _run([*pip_cmd, "install", "--upgrade", "pip"])
+    _install_pytorch_cpu(pip_cmd, upgrade)
+
     install_cmd = [str(python), "-m", "pip", "install"]
     if upgrade:
         install_cmd.append("--upgrade")
     if extra_index_url:
         install_cmd += ["--extra-index-url", extra_index_url]
 
-    _run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
     _run([*install_cmd, str(facenet_install)])
     _run([*install_cmd, "-e", str(repo_root)])
+    _verify_cpu_torch(pip_cmd)
+
+
+def _installed_torch_cuda_version(python_cmd: Sequence[str]) -> Optional[str]:
+    script = "import torch; print(torch.version.cuda or '')"
+    output = _run_output([*python_cmd, "-c", script])
+    if output is None:
+        return None
+    return output or None
+
+
+def _install_pytorch_cpu(pip_cmd: Sequence[str], upgrade: bool) -> None:
+    """Install torch/torchvision before facenet so pip cannot choose CUDA wheels."""
+    if len(pip_cmd) < 3 or list(pip_cmd[-2:]) != ["-m", "pip"]:
+        raise RuntimeError(f"Unsupported pip command shape: {shlex.join(pip_cmd)}")
+    python_cmd = pip_cmd[:-2]
+    install_cmd = [*pip_cmd, "install"]
+    if upgrade:
+        install_cmd.append("--upgrade")
+
+    if sys.platform == "darwin":
+        _run([*install_cmd, *PYTORCH_REQUIREMENTS])
+        return
+
+    if _installed_torch_cuda_version(python_cmd):
+        install_cmd.append("--force-reinstall")
+
+    _run([*install_cmd, *PYTORCH_REQUIREMENTS, "--index-url", PYTORCH_CPU_INDEX_URL])
+
+
+def _verify_cpu_torch(pip_cmd: Sequence[str]) -> None:
+    if sys.platform == "darwin":
+        return
+    if len(pip_cmd) < 3 or list(pip_cmd[-2:]) != ["-m", "pip"]:
+        raise RuntimeError(f"Unsupported pip command shape: {shlex.join(pip_cmd)}")
+    cuda_version = _installed_torch_cuda_version(pip_cmd[:-2])
+    if cuda_version:
+        raise RuntimeError(
+            "CUDA-enabled torch is still installed "
+            f"(torch.version.cuda={cuda_version}). Remove it and rerun setup_env.py."
+        )
 
 
 def _setup_conda(
@@ -176,6 +229,7 @@ def _setup_conda(
 
     pip_cmd = [conda, "run", "-n", env_name, "python", "-m", "pip"]
     _run([*pip_cmd, "install", "--upgrade", "pip"])
+    _install_pytorch_cpu(pip_cmd, upgrade)
 
     install_cmd = [*pip_cmd, "install"]
     if upgrade:
@@ -184,6 +238,7 @@ def _setup_conda(
         install_cmd += ["--extra-index-url", extra_index_url]
     _run([*install_cmd, str(facenet_install)])
     _run([*install_cmd, "-e", str(repo_root)])
+    _verify_cpu_torch(pip_cmd)
 
 
 def _venv_python(venv_dir: Path) -> Path:

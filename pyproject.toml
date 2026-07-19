@@ -8,9 +8,7 @@ version = "0.0.1"
 description = "Library to recognise and classify faces."
 readme = "README.md"
 requires-python = ">=3.9,<3.15"
-authors = [
-    { name = "RubenPants", email = "broekxruben@gmail.com" },
-]
+authors = [{ name = "RubenPants", email = "broekxruben@gmail.com" }]
 dependencies = [
     "facenet-pytorch==3.0.0",
     "Pillow",
@@ -25,7 +23,7 @@ dependencies = [
 Homepage = "https://github.com/RubenPants/FewShotFaceClassification"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
