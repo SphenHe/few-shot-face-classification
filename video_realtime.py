@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 
 from few_shot_face_classification.cache import load_or_build_embeddings_cache
-from few_shot_face_classification.embed import embed, get_networks
+from few_shot_face_classification.embed import embed_with_boxes, get_networks
 from few_shot_face_classification.similarity import _draw_faces_on_image, get_classes
 
 
@@ -63,18 +63,15 @@ def main() -> None:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil_im = Image.fromarray(rgb)
 
-        # Detect faces and get bounding boxes
-        boxes, _ = mtcnn.detect(pil_im)
-        
-        # Compute embeddings for detected faces
-        embs = embed(pil_im, mtcnn=mtcnn, vggface2=vggface2, device=args.device)
+        # Detect faces once so boxes and embeddings stay aligned.
+        embs, boxes = embed_with_boxes(pil_im, mtcnn=mtcnn, vggface2=vggface2, device=args.device)
 
-        if boxes is not None and len(boxes) > 0:
+        if boxes:
             names = get_classes(embs, labeled_paths, labeled_embs, thr=args.threshold)
             names = [n if n else "Unknown" for n in names]
 
             # Draw boxes and names using the existing PIL-based helper
-            annotated = _draw_faces_on_image(pil_im, boxes, names)
+            annotated = _draw_faces_on_image(pil_im, np.asarray(boxes), names)
             frame = cv2.cvtColor(np.array(annotated), cv2.COLOR_RGB2BGR)
 
         cv2.imshow("Face Recognition", frame)
